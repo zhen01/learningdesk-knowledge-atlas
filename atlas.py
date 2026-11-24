@@ -10,6 +10,7 @@ import sqlite3
 import sys
 import unicodedata
 import webbrowser
+import study
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
@@ -22,7 +23,7 @@ VIDEO={".mp4",".m4v",".mov",".webm"}
 AUDIO={".mp3",".m4a",".wav",".ogg",".flac",".aac"}
 IMAGES={".png",".jpg",".jpeg",".webp",".gif"}
 MEDIA=VIDEO|AUDIO|IMAGES
-EXT = {".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json", ".html", ".htm", ".srt", ".vtt"}|MEDIA
+EXT = {".pdf", ".docx", ".pptx", ".md", ".markdown", ".txt", ".csv", ".json", ".html", ".htm", ".srt", ".vtt"}|MEDIA
 DEFAULT_COLLECTIONS=("Career","Product Data Science","Textbook Knowledge","Fun Knowledge")
 
 def db():
@@ -36,6 +37,8 @@ def db():
         backup_db(conn, "before-reader-upgrade")
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collections'").fetchone():
         backup_db(conn, "before-library-upgrade")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='study_materials'").fetchone():
+        backup_db(conn, "before-study-upgrade")
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,original TEXT NOT NULL,created TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
     CREATE TABLE IF NOT EXISTS sections(document TEXT, label TEXT, text TEXT, PRIMARY KEY(document,label));
@@ -53,6 +56,7 @@ def db():
     """)
     conn.executemany("INSERT OR IGNORE INTO collections VALUES(?,?)",[(key("collection",name),name) for name in DEFAULT_COLLECTIONS])
     conn.commit()
+    study.schema(conn)
     return conn
 
 def backup_db(conn, reason="manual"):
@@ -74,7 +78,8 @@ def reader_document(doc):
                 "highlights":rows(c,"SELECT * FROM highlights WHERE document=? ORDER BY label,start",(doc,)),
                 "position":position[0] if position else None,
                 "transcripts":rows(c,"SELECT filename,hash FROM transcripts WHERE document=?",(doc,)),
-                "media_position":media_position[0] if media_position else 0}
+                "media_position":media_position[0] if media_position else 0,
+                "study":dict(record) if (record:=c.execute("SELECT * FROM study_materials WHERE document=?",(doc,)).fetchone()) else {}}
 
 def collection_change(payload):
     with db() as c:
@@ -177,6 +182,8 @@ def parse(path):
         sections = [(f"Paragraph {i+1}", p.text) for i,p in enumerate(doc.paragraphs)]
         for i,table in enumerate(doc.tables):
             sections.append((f"Table {i+1}", "\n".join(" | ".join(c.text for c in row.cells) for row in table.rows)))
+    elif ext==".pptx":
+        sections=study.slide_sections(path)
     elif ext in (".srt",".vtt"):
         sections=transcript_sections(path.read_text(encoding="utf-8-sig"),ext)
     elif ext==".csv":
@@ -275,7 +282,10 @@ def snapshot():
             "sources":rows(c,"SELECT s.*,d.name AS document_name FROM sources s JOIN documents d ON s.document=d.id"),
             "connections":rows(c,"SELECT * FROM connections"),
             "collections":rows(c,"SELECT * FROM collections ORDER BY name"),
-            "document_collections":rows(c,"SELECT * FROM document_collections")
+            "document_collections":rows(c,"SELECT * FROM document_collections"),
+            "study_materials":rows(c,"SELECT * FROM study_materials"),
+            "decks":rows(c,"SELECT * FROM decks ORDER BY name"),
+            "cards":rows(c,"SELECT * FROM cards ORDER BY rowid")
         }
 
 def pending():
@@ -419,20 +429,22 @@ class Handler(BaseHTTPRequestHandler):
             if p.suffix.lower() in {".md",".markdown",".txt",".html",".htm"}: typ="text/plain; charset=utf-8"
             disposition="inline" if p.suffix.lower() in ({".pdf"}|MEDIA) else "attachment"
             return self.send_file(p,typ,disposition)
-        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js"):
+        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css"):
             name="index.html" if u.path=="/" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
     def do_POST(self):
         action=urlparse(self.path).path
-        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position"):
+        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position","/api/study","/api/flashcards"):
             return self.send({"error":"Request rejected"},status=403)
         try:
             length=int(self.headers.get("Content-Length","0"))
             if action!="/api/import":
-                if not 0<length<=(25_000_000 if action=="/api/transcript" else 1000000):
+                if not 0<length<=(25_000_000 if action=="/api/transcript" else 12000000 if action=="/api/flashcards" else 1000000):
                     raise ValueError("Invalid request size.")
                 payload=json.loads(self.rfile.read(length))
+                if action in ("/api/study","/api/flashcards"):
+                    with db() as c:return self.send(study.material(c,payload) if action=="/api/study" else study.flashcards(c,payload))
                 if action=="/api/collection":return self.send(collection_change(payload))
                 if action=="/api/transcript":return self.send(attach_transcript(payload))
                 if action=="/api/media-position":
@@ -477,6 +489,7 @@ def main():
     serve=sub.add_parser("serve");serve.add_argument("--port",type=int,default=8765);serve.add_argument("--no-browser",action="store_true")
     imp=sub.add_parser("import");imp.add_argument("paths",nargs="*")
     sub.add_parser("pending");sub.add_parser("catalog");sub.add_parser("backup")
+    export=sub.add_parser("export-library");export.add_argument("destination")
     read=sub.add_parser("read");read.add_argument("document");read.add_argument("labels",nargs="+")
     write=sub.add_parser("apply");write.add_argument("file")
     args=parser.parse_args()
@@ -498,6 +511,27 @@ def main():
     elif args.cmd=="backup":
         with db() as c:
             print(backup_db(c))
+    elif args.cmd=="export-library":
+        import tempfile
+        import zipfile
+        destination=Path(args.destination).expanduser().resolve()
+        if destination.exists() or DATA.resolve() in destination.parents:
+            raise ValueError("Choose a new ZIP file outside the data folder.")
+        with tempfile.TemporaryDirectory() as tmp:
+            safe_db=Path(tmp)/"atlas.sqlite"
+            with db() as c, sqlite3.connect(safe_db) as target:
+                c.backup(target)
+            with zipfile.ZipFile(destination,"x",compression=zipfile.ZIP_DEFLATED,allowZip64=True) as archive:
+                archive.write(safe_db,"data/atlas.sqlite")
+                for name in ("originals","transcripts"):
+                    folder=DATA/name
+                    if folder.exists():
+                        for p in folder.rglob("*"):
+                            if p.is_file() and not p.is_symlink():archive.write(p,"data/"+str(p.relative_to(DATA)))
+                if INBOX.exists():
+                    for p in INBOX.rglob("*"):
+                        if p.is_file() and not p.is_symlink():archive.write(p,"inbox/"+str(p.relative_to(INBOX)))
+        print(f"Portable library saved: {destination}")
     elif args.cmd=="read":
         with db() as c:
             print(json.dumps([dict(r) for l in args.labels for r in c.execute("SELECT label,text FROM sections WHERE document=? AND label=?",(args.document,l))],ensure_ascii=False,indent=2))
