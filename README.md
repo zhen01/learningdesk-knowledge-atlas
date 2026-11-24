@@ -1,12 +1,20 @@
 # LearningDesk 2.0 — Knowledge Atlas
 
-**Make what you read connect.**
+**Information is easy to access. Understanding takes a little more work.**
 
 ![LearningDesk illustrated interface preview](docs/atlas-preview.svg)
 
 *Illustrated preview with synthetic sample concepts; never taken from a personal library.*
 
-LearningDesk turns a collection of PDFs, documents, datasets, videos, audio and notes into a continuously growing, source-linked atlas. Instead of asking an AI to summarize the same textbook again, keep the extracted knowledge, discover connections to other subjects, and return to the original passage whenever you need context.
+## Why I built this
+
+AI has made information incredibly easy to access. The hard part is turning all that information into something I actually understand and remember. I would read a textbook, ask AI to explain a concept, learn something interesting, and a few days later struggle to remember where I had seen it or how it fit into the bigger picture.
+
+I wanted a place where what I learn can accumulate. LearningDesk keeps the useful concepts from my documents, organizes them into a navigable knowledge tree, and connects ideas that appear across different subjects. I can return to the original passage, see how far I've worked through a material, and build on knowledge I already extracted instead of starting over with every new AI session.
+
+## What it does
+
+LearningDesk is a local workspace for documents, datasets, videos, audio and notes. Codex reads new material, creates source-linked concepts and learning roadmaps, and merges overlapping concepts into the existing atlas. The reader, graph, flashcards and library let me revisit and use what I've learned.
 
 Local-first · Python + SQLite · Native JavaScript · Codex CLI · MIT
 
@@ -59,12 +67,14 @@ Stop the server and indexing sessions first. The updater downloads the latest pu
 
 The app automatically creates a SQLite backup before the reader schema upgrade and once per day before indexing. You can also run `.venv/bin/python atlas.py backup`. All updates are incremental: previously processed sections are skipped, existing concept definitions and source references remain, and duplicate uploads reuse the existing document hash.
 
-## Four views
+## Inside the workspace
 
 - **Knowledge Tree**: domains, modules, submodules, concepts. Expand/collapse, search ideas, and click a concept to view its references.
 - **Connections**: spaced, grouped domain layout with zoom and pan, domain filters, cross-domain relationships, and a focused one-hop neighborhood mode. Click a card or a relationship line.
 - **Library**: original documents, datasets, videos, audio, and images; custom collections and multiple collection tags per file; file type and filename filters.
 - **Reader**: read extracted PDF pages, DOCX paragraphs, or text sections, jump to source citations, save color highlights and notes, resume the last section, and listen using available local system voices. Open the original PDF beside the extracted text for layout context. Highlights belong to the extracted text, not the PDF's native annotation layer. Listen reads the current section; choose a voice and speed before starting.
+
+- **Flashcards**: import your own decks, practice recall and save what you know.
 
 When you import a second textbook, Codex reads the existing catalog and integrates overlapping content, preserving each document's evidence. The application checks that quotes match the parsed source. It does not generate sample concepts or fabricate an atlas.
 
@@ -98,7 +108,7 @@ Default collections are Career, Product Data Science, Textbook Knowledge, and Fu
 
 Open **Learning roadmap** from a material's Library card or reader. During indexing, Codex organizes the actual contents into meaningful modules with learning outcomes and source references. Check off modules as you learn, or expand the source sections. Original source labels preserve existing checkmarks through updates. The roadmap does not invent a generic curriculum or arbitrary page groups.
 
-Import your own study plan as a document and let Codex follow its existing sequence. Continue using your preferred external coding practice platforms. The separate Practice & Roadmaps workspace is no longer in the navigation; its prior practice records are retained in SQLite and portable exports.
+Import your own study plan as a document and let Codex follow its existing sequence. Continue using your preferred external coding practice platforms. The app focuses on reading and retaining the material; coding drills and interview practice can stay in the tools you already use.
 
 After updating, run Index with Codex once. Missing roadmaps for previously indexed materials are created from saved concept explanations and source evidence without re-extracting existing knowledge. New materials get a roadmap as part of their normal index pass.
 
