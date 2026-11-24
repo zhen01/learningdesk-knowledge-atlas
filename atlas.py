@@ -491,7 +491,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.suffix.lower() in {".md",".markdown",".txt",".html",".htm"}: typ="text/plain; charset=utf-8"
             disposition="inline" if p.suffix.lower() in ({".pdf"}|MEDIA) else "attachment"
             return self.send_file(p,typ,disposition)
-        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css","/later.js","/later.css"):
+        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css","/later.js","/later.css","/macos.css"):
             name="index.html" if u.path=="/" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
