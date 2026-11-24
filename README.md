@@ -102,6 +102,10 @@ Media playback depends on browser codec support. For video/audio, attach an exis
 
 Default collections are Career, Product Data Science, Textbook Knowledge, and Fun Knowledge. Create your own and assign more than one collection to a material. Existing materials initially remain Unsorted until you classify them; collections are independent from AI-generated domains and do not change knowledge nodes or existing source evidence.
 
+## Save things for later
+
+The Library includes a visual gallery, a Reading list and a Materials to be added queue. Save books, courses and research ideas before you have the material. The reading shelf starts with six editable public resources, marked as free, preview or paid access. Link a queue item to an imported file when it is ready. Notes, statuses and links are saved in SQLite and included in portable exports. Bookmarks are not automatically fetched or indexed.
+
 ## Study workspace
 
 ### Content-based learning roadmaps
