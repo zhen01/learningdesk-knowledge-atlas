@@ -4,6 +4,40 @@ from pathlib import Path
 import atlas
 
 class AtlasTest(unittest.TestCase):
+    def test_collections_media_and_incremental_transcripts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data"
+            p=root/"lesson.mp4";p.write_bytes(b"synthetic fixture bytes")
+            docid=atlas.ingest(p)
+            self.assertEqual(atlas.pending(),[])
+            state=atlas.snapshot()
+            self.assertEqual(state["documents"][0]["status"],"media")
+            self.assertEqual(len(state["collections"]),4)
+            c=atlas.collection_change({"action":"create","name":"Interesting ideas"})
+            for cid in [c["id"],state["collections"][0]["id"]]:
+                atlas.collection_change({"document":docid,"collection":cid,"assigned":True})
+            self.assertEqual(len(atlas.snapshot()["document_collections"]),2)
+            payload={"document":docid,"name":"lesson.srt","text":"1\n00:01:02,000 --> 00:01:06,000\nA sample transcript about statistics.\n"}
+            atlas.attach_transcript(payload)
+            self.assertTrue(atlas.attach_transcript(payload)["duplicate"])
+            self.assertEqual(len(atlas.pending()),1)
+            label=atlas.pending()[0]["label"]
+            self.assertIn("@ 00:01:02.000",label)
+            atlas.apply({"document":docid,"sections":[label],"concepts":[],"connections":[]})
+            self.assertEqual(atlas.pending(),[])
+            self.assertEqual(atlas.ingest(p),docid)
+            self.assertEqual(atlas.snapshot()["documents"][0]["status"],"complete")
+            self.assertEqual((atlas.DATA/"originals"/docid/p.name).read_bytes(),p.read_bytes())
+            self.assertEqual(len(atlas.reader_document(docid)["transcripts"]),1)
+    def test_structured_parsing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data"
+            for name,content,expected in [("data.csv","metric,value\nretention,0.75","metric: retention"),("data.json",'{"metric":"retention"}','"metric": "retention"'),("page.html","<h1>Learning</h1><script>do_not_execute()</script>","Learning")]:
+                path=root/name;path.write_text(content)
+                docid=atlas.ingest(path)
+                section=atlas.reader_document(docid)["sections"][0]["text"]
+                self.assertIn(expected,section)
+                self.assertNotIn("do_not_execute",section)
     def test_source_only_update_preserves_data(self):
         import sqlite3
         import update_existing
