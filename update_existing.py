@@ -13,6 +13,7 @@ CODE = (
     "Start LearningDesk.command", "Index with Codex.command", "Update LearningDesk.command", "update_existing.py",
     "test_atlas.py", "web/index.html", "web/app.js", "web/style.css",
     "web/reader.js", "web/graph.js", "web/upgrade.css", "web/library.js",
+    "study.py", "web/study.js", "web/study.css",
 )
 
 def update(destination, source=SOURCE):
