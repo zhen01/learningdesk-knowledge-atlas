@@ -42,6 +42,8 @@ def db():
         backup_db(conn, "before-study-upgrade")
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chapter_done'").fetchone():
         backup_db(conn, "before-practice-upgrade")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='material_modules'").fetchone():
+        backup_db(conn, "before-material-roadmap-upgrade")
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,original TEXT NOT NULL,created TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
     CREATE TABLE IF NOT EXISTS sections(document TEXT, label TEXT, text TEXT, PRIMARY KEY(document,label));
@@ -366,6 +368,8 @@ def apply(payload):
                 raise ValueError("Invalid connection.")
             c.execute("INSERT OR IGNORE INTO connections VALUES(?,?,?,?,?,?,?,?)",(key(a,b,kind,doc,label),a,b,kind,edge["explanation"],doc,label,q))
         c.executemany("INSERT INTO processed VALUES(?,?)",[(doc,l) for l in labels])
+        if "roadmap" in payload:
+            practice.save_roadmap(c,doc,payload["roadmap"],labels)
         remaining=c.execute("SELECT count(*) FROM sections s LEFT JOIN processed p ON p.document=s.document AND p.label=s.label WHERE s.document=? AND p.label IS NULL",(doc,)).fetchone()[0]
         c.execute("UPDATE documents SET status=? WHERE id=?",("ready" if remaining else "complete",doc))
 
@@ -500,6 +504,9 @@ def main():
     serve=sub.add_parser("serve");serve.add_argument("--port",type=int,default=8765);serve.add_argument("--no-browser",action="store_true")
     imp=sub.add_parser("import");imp.add_argument("paths",nargs="*")
     sub.add_parser("pending");sub.add_parser("catalog");sub.add_parser("backup")
+    sub.add_parser("roadmap-pending")
+    roadmap_context=sub.add_parser("roadmap-context");roadmap_context.add_argument("document")
+    roadmap_apply=sub.add_parser("roadmap-apply");roadmap_apply.add_argument("file")
     export=sub.add_parser("export-library");export.add_argument("destination")
     read=sub.add_parser("read");read.add_argument("document");read.add_argument("labels",nargs="+")
     write=sub.add_parser("apply");write.add_argument("file")
@@ -548,6 +555,18 @@ def main():
             print(json.dumps([dict(r) for l in args.labels for r in c.execute("SELECT label,text FROM sections WHERE document=? AND label=?",(args.document,l))],ensure_ascii=False,indent=2))
     elif args.cmd=="apply":
         apply(json.loads(Path(args.file).read_text(encoding="utf-8")));print("Atlas updated.")
+    elif args.cmd=="roadmap-pending":
+        with db() as c:print(json.dumps(practice.roadmap_pending(c),ensure_ascii=False,indent=2))
+    elif args.cmd=="roadmap-context":
+        with db() as c:print(json.dumps(practice.roadmap_context(c,args.document),ensure_ascii=False,indent=2))
+    elif args.cmd=="roadmap-apply":
+        payload=json.loads(Path(args.file).read_text(encoding="utf-8"))
+        with db() as c:
+            doc=payload["document"];labels=payload["sections"]
+            pending={x["label"] for x in practice.roadmap_context(c,doc)["unassigned_sections"]}
+            if not isinstance(labels,list) or not labels or len(labels)!=len(set(labels)) or not set(labels)<=pending:raise ValueError("Choose only unassigned, indexed source sections.")
+            practice.save_roadmap(c,doc,payload["roadmap"],labels)
+        print("Material roadmap saved without re-indexing knowledge.")
 
 if __name__=="__main__":
     main()
