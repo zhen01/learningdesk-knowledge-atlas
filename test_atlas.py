@@ -4,6 +4,31 @@ from pathlib import Path
 import atlas
 
 class AtlasTest(unittest.TestCase):
+    def test_study_metadata_and_deck_reimport(self):
+        import study
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data";p=root/"source.txt";p.write_text("A learning resource.");doc=atlas.ingest(p)
+            with atlas.db() as c:
+                original=c.execute("SELECT name FROM documents WHERE id=?",(doc,)).fetchone()[0]
+                study.material(c,{"document":doc,"title":"My title","note":"My note","progress":.4,"completed":True})
+                study.material(c,{"document":doc,"progress":.7})
+                self.assertEqual(c.execute("SELECT name FROM documents WHERE id=?",(doc,)).fetchone()[0],original)
+                payload={"action":"import","name":"Statistics","format":"csv","text":"Front,Back\nWhat is a mean?,An average"}
+                self.assertEqual(study.flashcards(c,payload)["added"],1)
+                card=c.execute("SELECT id FROM cards").fetchone()[0]
+                study.flashcards(c,{"action":"review","id":card,"known":True})
+                self.assertEqual(study.flashcards(c,payload)["added"],0)
+                self.assertEqual(c.execute("SELECT known FROM cards").fetchone()[0],1)
+            record=atlas.reader_document(doc)["study"]
+            self.assertEqual((record["title"],record["note"],record["progress"],record["completed"]),("My title","My note",.7,1))
+    def test_pptx_text(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data";p=root/"deck.pptx"
+            with zipfile.ZipFile(p,"w") as z:
+                z.writestr("ppt/slides/slide1.xml",'<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:p><a:r><a:t>Learning concept</a:t></a:r></a:p></p:sld>')
+            doc=atlas.ingest(p)
+            self.assertEqual(atlas.reader_document(doc)["sections"],[{"label":"Slide 1","text":"Learning concept"}])
     def test_collections_media_and_incremental_transcripts(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);atlas.DATA=root/"data"
