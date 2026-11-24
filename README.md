@@ -94,16 +94,13 @@ Default collections are Career, Product Data Science, Textbook Knowledge, and Fu
 
 ## Study workspace
 
-### Practice & Roadmaps
+### Content-based learning roadmaps
 
-- **Learning Roadmap:** four role-oriented starter tracks (Data Engineering, Product Data Science, Analytics Engineering, SDE—Data), ordered topics, linked existing atlas concepts, and persistent completion.
-- **Material Roadmap:** open a document's chapter checklist from Library or Reader. Detected headings form sections; otherwise use source-ordered ranges of up to eight source sections. Indexed concepts supply descriptive labels. Check off groups or individual sections without changing the original document or AI index.
-- **Study Plan:** schedule topics by goal, start date, days and daily time budget, with review and practice days. Topic completion persists; this is a suggested plan, not a calendar reminder service.
-- **Coding Lab:** six starter SQL/Python exercises, sample SQL tables, hints, solutions, real SQLite SELECT query execution against two fixtures, and bounded Python exercise interpretation with tests. Python supports a limited beginner subset (no imports, arbitrary system access or full Python runtime); more exercises and language features can be added later.
-- **Concept Lab:** interactive join cardinality and A/B testing examples.
-- **Mistake Notebook:** failed attempts, feedback, reference solution, personal reflection and resolved status.
+Open **Learning roadmap** from a material's Library card or reader. During indexing, Codex organizes the actual contents into meaningful modules with learning outcomes and source references. Check off modules as you learn, or expand the source sections. Original source labels preserve existing checkmarks through updates. The roadmap does not invent a generic curriculum or arbitrary page groups.
 
-All practice state is local and included in portable library exports.
+Import your own study plan as a document and let Codex follow its existing sequence. Continue using your preferred external coding practice platforms. The separate Practice & Roadmaps workspace is no longer in the navigation; its prior practice records are retained in SQLite and portable exports.
+
+After updating, run Index with Codex once. Missing roadmaps for previously indexed materials are created from saved concept explanations and source evidence without re-extracting existing knowledge. New materials get a roadmap as part of their normal index pass.
 
 - Rename materials using their display names; original filenames, source IDs and AI evidence remain unchanged.
 - Save per-material notes, estimated reading/playback progress and manual completion. Completion is explicit; position is not a measure of comprehension.
