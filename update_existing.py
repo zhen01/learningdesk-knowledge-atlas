@@ -17,6 +17,7 @@ CODE = (
     "practice.py", "web/practice.js", "web/practice.css",
     "web/gallery.js", "web/gallery.css",
     "later.py", "web/later.js", "web/later.css",
+    "web/macos.css",
 )
 
 def update(destination, source=SOURCE):
