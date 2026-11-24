@@ -4,6 +4,29 @@ from pathlib import Path
 import atlas
 
 class AtlasTest(unittest.TestCase):
+    def test_source_only_update_preserves_data(self):
+        import sqlite3
+        import update_existing
+        with tempfile.TemporaryDirectory() as temp:
+            destination=Path(temp)/"existing"
+            destination.mkdir()
+            (destination/"atlas.py").write_text("# old application")
+            (destination/"data"/"originals").mkdir(parents=True)
+            (destination/"inbox").mkdir()
+            (destination/"inbox"/"personal.txt").write_text("personal material")
+            (destination/"data"/"originals"/"source.txt").write_text("saved original")
+            database=destination/"data"/"atlas.sqlite"
+            with sqlite3.connect(database) as c:
+                c.execute("CREATE TABLE concepts(name TEXT)")
+                c.execute("INSERT INTO concepts VALUES('Existing concept')")
+            original=database.read_bytes()
+            backup=update_existing.update(destination)
+            self.assertEqual(database.read_bytes(),original)
+            self.assertEqual((destination/"inbox"/"personal.txt").read_text(),"personal material")
+            self.assertEqual((destination/"data"/"originals"/"source.txt").read_text(),"saved original")
+            self.assertTrue((destination/"web"/"reader.js").exists())
+            with sqlite3.connect(backup) as c:
+                self.assertEqual(c.execute("SELECT name FROM concepts").fetchone()[0],"Existing concept")
     def test_reader_annotations_survive_upgrade_and_indexing(self):
         import sqlite3
         with tempfile.TemporaryDirectory() as temp:
