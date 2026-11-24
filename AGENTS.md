@@ -16,6 +16,7 @@ When the user asks to index learning materials, process the actual document cont
 - Before a source-code upgrade, run `.venv/bin/python atlas.py backup` (or `python3 atlas.py backup` if the virtual environment is not available). The app also backs up the database prior to schema changes and once per day before indexing.
 - Documents are immutable once imported. If the same filename has changed content, it is a new document version; preserve both source IDs and annotations. A database backup is not a backup of the originals; retain and periodically copy the entire data folder.
 - User-defined library collections are separate from the AI hierarchy. Never reclassify a user's collection assignments without their explicit instruction. For video and audio, only index an attached readable transcript or subtitles, not the filename. Do not claim to have watched or transcribed a video if only the transcript is available.
+- Preserve study plans, roadmap completion, chapter checklists, coding attempts and mistake notes. They are user-maintained state, distinct from the AI indexing process.
 
 ```json
 {
