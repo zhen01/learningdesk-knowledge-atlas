@@ -12,6 +12,7 @@ import unicodedata
 import webbrowser
 import study
 import practice
+import later
 import threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,6 +47,8 @@ def db():
         backup_db(conn, "before-practice-upgrade")
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='material_modules'").fetchone():
         backup_db(conn, "before-material-roadmap-upgrade")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='later_items'").fetchone():
+        backup_db(conn, "before-later-upgrade")
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,original TEXT NOT NULL,created TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
     CREATE TABLE IF NOT EXISTS sections(document TEXT, label TEXT, text TEXT, PRIMARY KEY(document,label));
@@ -65,6 +68,7 @@ def db():
     conn.commit()
     study.schema(conn)
     practice.schema(conn)
+    later.schema(conn)
     return conn
 
 def backup_db(conn, reason="manual"):
@@ -462,6 +466,8 @@ class Handler(BaseHTTPRequestHandler):
         u=urlparse(self.path)
         if u.path=="/api/atlas":
             return self.send(snapshot())
+        if u.path=="/api/later":
+            with db() as c:return self.send(later.state(c))
         if u.path=="/api/practice":
             with db() as c:return self.send(practice.state(c))
         if u.path=="/api/chapters":
@@ -485,13 +491,13 @@ class Handler(BaseHTTPRequestHandler):
             if p.suffix.lower() in {".md",".markdown",".txt",".html",".htm"}: typ="text/plain; charset=utf-8"
             disposition="inline" if p.suffix.lower() in ({".pdf"}|MEDIA) else "attachment"
             return self.send_file(p,typ,disposition)
-        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css"):
+        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css","/later.js","/later.css"):
             name="index.html" if u.path=="/" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
     def do_POST(self):
         action=urlparse(self.path).path
-        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position","/api/study","/api/flashcards","/api/practice"):
+        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position","/api/study","/api/flashcards","/api/practice","/api/later"):
             return self.send({"error":"Request rejected"},status=403)
         try:
             length=int(self.headers.get("Content-Length","0"))
@@ -499,6 +505,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not 0<length<=(25_000_000 if action=="/api/transcript" else 12000000 if action=="/api/flashcards" else 1000000):
                     raise ValueError("Invalid request size.")
                 payload=json.loads(self.rfile.read(length))
+                if action=="/api/later":
+                    with db() as c:return self.send(later.action(c,payload))
                 if action=="/api/practice":
                     with db() as c:return self.send(practice.action(c,payload))
                 if action in ("/api/study","/api/flashcards"):
@@ -548,6 +556,7 @@ def main():
     imp=sub.add_parser("import");imp.add_argument("paths",nargs="*")
     sub.add_parser("pending");sub.add_parser("catalog");sub.add_parser("backup")
     sub.add_parser("roadmap-pending")
+    sub.add_parser("later")
     roadmap_context=sub.add_parser("roadmap-context");roadmap_context.add_argument("document")
     roadmap_apply=sub.add_parser("roadmap-apply");roadmap_apply.add_argument("file")
     export=sub.add_parser("export-library");export.add_argument("destination")
@@ -600,6 +609,8 @@ def main():
         apply(json.loads(Path(args.file).read_text(encoding="utf-8")));print("Atlas updated.")
     elif args.cmd=="roadmap-pending":
         with db() as c:print(json.dumps(practice.roadmap_pending(c),ensure_ascii=False,indent=2))
+    elif args.cmd=="later":
+        with db() as c:print(json.dumps(later.state(c),ensure_ascii=False,indent=2))
     elif args.cmd=="roadmap-context":
         with db() as c:print(json.dumps(practice.roadmap_context(c,args.document),ensure_ascii=False,indent=2))
     elif args.cmd=="roadmap-apply":
