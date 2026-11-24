@@ -4,6 +4,32 @@ from pathlib import Path
 import atlas
 
 class AtlasTest(unittest.TestCase):
+    def test_practice_and_chapter_checklist(self):
+        import practice
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data";p=root/"book.md"
+            p.write_text("# Chapter 1\nSQL joins match rows.\n# Chapter 2\nWindow functions rank rows.")
+            doc=atlas.ingest(p)
+            before=atlas.snapshot()
+            with atlas.db() as c:
+                roadmap=practice.chapter_roadmap(c,doc)
+                self.assertEqual(len(roadmap["groups"]),2)
+                label=roadmap["groups"][0]["sections"][0]["label"]
+                practice.action(c,{"action":"chapter","document":doc,"labels":[label],"done":True})
+                self.assertEqual(practice.chapter_roadmap(c,doc)["completed"],1)
+                for p in practice.PROBLEMS:
+                    result=practice.run_problem(c,{"problem":p["id"],"code":p["solution"]})
+                    self.assertTrue(result["passed"],result)
+                result=practice.run_problem(c,{"problem":"py-dedup","code":"def solve(items):\n    return []"})
+                self.assertFalse(result["passed"])
+                self.assertEqual(practice.state(c)["mistake_notes"][0]["problem"],"py-dedup")
+                practice.action(c,{"action":"plan","track":"Data Engineering","start":"2026-11-24","days":14,"minutes":45})
+                practice.action(c,{"action":"topic","track":"Data Engineering","topic":"SQL joins and grain","done":True})
+                self.assertEqual(practice.state(c)["plan"]["days"],14)
+            after=atlas.snapshot()
+            for key in ("nodes","sources","connections","placements"):
+                self.assertEqual(before[key],after[key])
+            self.assertEqual(after["documents"][0]["chapters_done"],1)
     def test_study_metadata_and_deck_reimport(self):
         import study
         with tempfile.TemporaryDirectory() as temp:
