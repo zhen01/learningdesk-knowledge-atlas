@@ -18,7 +18,12 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 INBOX = ROOT / "inbox"
-EXT = {".pdf", ".docx", ".md", ".markdown", ".txt"}
+VIDEO={".mp4",".m4v",".mov",".webm"}
+AUDIO={".mp3",".m4a",".wav",".ogg",".flac",".aac"}
+IMAGES={".png",".jpg",".jpeg",".webp",".gif"}
+MEDIA=VIDEO|AUDIO|IMAGES
+EXT = {".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json", ".html", ".htm", ".srt", ".vtt"}|MEDIA
+DEFAULT_COLLECTIONS=("Career","Product Data Science","Textbook Knowledge","Fun Knowledge")
 
 def db():
     DATA.mkdir(exist_ok=True)
@@ -29,6 +34,8 @@ def db():
     # are never dropped, rewritten, or re-indexed by a schema upgrade.
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='highlights'").fetchone():
         backup_db(conn, "before-reader-upgrade")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collections'").fetchone():
+        backup_db(conn, "before-library-upgrade")
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,original TEXT NOT NULL,created TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
     CREATE TABLE IF NOT EXISTS sections(document TEXT, label TEXT, text TEXT, PRIMARY KEY(document,label));
@@ -39,7 +46,13 @@ def db():
     CREATE TABLE IF NOT EXISTS processed(document TEXT,label TEXT,PRIMARY KEY(document,label));
     CREATE TABLE IF NOT EXISTS highlights(id TEXT PRIMARY KEY,document TEXT NOT NULL,label TEXT NOT NULL,start INTEGER NOT NULL,end INTEGER NOT NULL,quote TEXT NOT NULL,color TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',created TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS reading_positions(document TEXT PRIMARY KEY,label TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS collections(id TEXT PRIMARY KEY,name TEXT NOT NULL COLLATE NOCASE UNIQUE);
+    CREATE TABLE IF NOT EXISTS document_collections(document TEXT,collection TEXT,PRIMARY KEY(document,collection));
+    CREATE TABLE IF NOT EXISTS transcripts(document TEXT,hash TEXT,filename TEXT,original TEXT,PRIMARY KEY(document,hash));
+    CREATE TABLE IF NOT EXISTS media_positions(document TEXT PRIMARY KEY,seconds REAL NOT NULL);
     """)
+    conn.executemany("INSERT OR IGNORE INTO collections VALUES(?,?)",[(key("collection",name),name) for name in DEFAULT_COLLECTIONS])
+    conn.commit()
     return conn
 
 def backup_db(conn, reason="manual"):
@@ -56,9 +69,72 @@ def reader_document(doc):
         if not d:
             raise ValueError("Document not found.")
         position=c.execute("SELECT label FROM reading_positions WHERE document=?",(doc,)).fetchone()
+        media_position=c.execute("SELECT seconds FROM media_positions WHERE document=?",(doc,)).fetchone()
         return {"document":dict(d),"sections":rows(c,"SELECT label,text FROM sections WHERE document=? ORDER BY rowid",(doc,)),
                 "highlights":rows(c,"SELECT * FROM highlights WHERE document=? ORDER BY label,start",(doc,)),
-                "position":position[0] if position else None}
+                "position":position[0] if position else None,
+                "transcripts":rows(c,"SELECT filename,hash FROM transcripts WHERE document=?",(doc,)),
+                "media_position":media_position[0] if media_position else 0}
+
+def collection_change(payload):
+    with db() as c:
+        if payload.get("action")=="create":
+            name=payload.get("name","").strip()
+            if not 1<=len(name)<=80:raise ValueError("Enter a collection name.")
+            c.execute("INSERT OR IGNORE INTO collections VALUES(?,?)",(key("collection",name),name))
+            return dict(c.execute("SELECT * FROM collections WHERE name=? COLLATE NOCASE",(name,)).fetchone())
+        document,collection=payload["document"],payload["collection"]
+        if not c.execute("SELECT 1 FROM documents WHERE id=?",(document,)).fetchone() or not c.execute("SELECT 1 FROM collections WHERE id=?",(collection,)).fetchone():
+            raise ValueError("Unknown document or collection.")
+        if payload.get("assigned"):
+            c.execute("INSERT OR IGNORE INTO document_collections VALUES(?,?)",(document,collection))
+        else:
+            c.execute("DELETE FROM document_collections WHERE document=? AND collection=?",(document,collection))
+        return {"ok":True}
+
+def transcript_sections(text,ext):
+    if ext in (".vtt",".srt"):
+        items=[]
+        for block in re.split(r"\n\s*\n",text.replace("\r\n","\n").strip()):
+            lines=block.splitlines()
+            timing=next((i for i,l in enumerate(lines) if "-->" in l),None)
+            if timing is None:continue
+            start=lines[timing].split("-->")[0].strip().replace(",",".")
+            if not re.fullmatch(r"(?:\d{1,3}:)?\d{2}:\d{2}(?:\.\d+)?",start):continue
+            content="\n".join(re.sub(r"<[^>]+>","",l) for l in lines[timing+1:]).strip()
+            if content:items.append((f"@ {start}",content))
+        # Group adjacent cues into useful context windows, retain the first
+        # timestamp as the citation and playback position.
+        sections=[];label=None;parts=[]
+        for timestamp,content in items:
+            if parts and sum(map(len,parts))+len(content)>3500:
+                sections.append((label,"\n".join(parts)));parts=[]
+            if not parts:label=timestamp
+            parts.append(content)
+        if parts:sections.append((label,"\n".join(parts)))
+        return sections
+    return [(f"Part {i//12000+1}",text[i:i+12000]) for i in range(0,len(text),12000) if text[i:i+12000].strip()]
+
+def attach_transcript(payload):
+    doc,name,text=payload["document"],payload["name"],payload["text"]
+    ext=Path(name).suffix.lower()
+    if ext not in (".srt",".vtt",".txt",".md") or not isinstance(text,str) or not text.strip() or len(text)>5_000_000:
+        raise ValueError("Attach a nonempty SRT, VTT, TXT or Markdown transcript.")
+    sections=transcript_sections(text,ext)
+    if not sections:raise ValueError("No readable transcript cues found.")
+    digest=hashlib.sha256(text.encode()).hexdigest()
+    with db() as c:
+        d=c.execute("SELECT name FROM documents WHERE id=?",(doc,)).fetchone()
+        if not d or Path(d["name"]).suffix.lower() not in VIDEO|AUDIO:raise ValueError("Choose a video or audio file.")
+        if c.execute("SELECT 1 FROM transcripts WHERE document=? AND hash=?",(doc,digest)).fetchone():return {"ok":True,"duplicate":True}
+        folder=DATA/"transcripts"/doc
+        folder.mkdir(parents=True,exist_ok=True)
+        original=folder/(digest+ext)
+        original.write_text(text,encoding="utf-8")
+        c.execute("INSERT INTO transcripts VALUES(?,?,?,?)",(doc,digest,Path(name).name,str(original.relative_to(DATA))))
+        c.executemany("INSERT INTO sections VALUES(?,?,?)",[(doc,f"Transcript {digest[:12]} · {i+1} · {label}",content) for i,(label,content) in enumerate(sections)])
+        c.execute("UPDATE documents SET status='ready',error=NULL WHERE id=?",(doc,))
+        return {"ok":True,"duplicate":False}
 
 def save_highlight(payload):
     doc,label=payload["document"],payload["label"]
@@ -101,6 +177,38 @@ def parse(path):
         sections = [(f"Paragraph {i+1}", p.text) for i,p in enumerate(doc.paragraphs)]
         for i,table in enumerate(doc.tables):
             sections.append((f"Table {i+1}", "\n".join(" | ".join(c.text for c in row.cells) for row in table.rows)))
+    elif ext in (".srt",".vtt"):
+        sections=transcript_sections(path.read_text(encoding="utf-8-sig"),ext)
+    elif ext==".csv":
+        import csv
+        with path.open(encoding="utf-8-sig",newline="") as f:
+            reader=csv.reader(f)
+            header=next(reader,[])
+            sections=[]
+            batch=[]
+            for i,row in enumerate(reader,1):
+                batch.append(" | ".join(f"{header[j] if j<len(header) else 'Column '+str(j+1)}: {value}" for j,value in enumerate(row)))
+                if len(batch)==25:
+                    sections.append((f"Rows {i-24}–{i}","\n".join(batch)));batch=[]
+            if batch:sections.append((f"Rows {i-len(batch)+1}–{i}","\n".join(batch)))
+    elif ext==".json":
+        parsed=json.loads(path.read_text(encoding="utf-8-sig"))
+        text=json.dumps(parsed,ensure_ascii=False,indent=2)
+        sections=[(f"JSON part {i//12000+1}",text[i:i+12000]) for i in range(0,len(text),12000)]
+    elif ext in (".html",".htm"):
+        from html.parser import HTMLParser
+        class Extractor(HTMLParser):
+            def __init__(self):
+                super().__init__();self.parts=[];self.skip=0
+            def handle_starttag(self,tag,attrs):
+                if tag in ("script","style"):self.skip+=1
+            def handle_endtag(self,tag):
+                if tag in ("script","style") and self.skip:self.skip-=1
+            def handle_data(self,data):
+                if not self.skip and data.strip():self.parts.append(data.strip())
+        parser=Extractor();parser.feed(path.read_text(encoding="utf-8-sig"))
+        text="\n".join(parser.parts)
+        sections=[(f"HTML part {i//12000+1}",text[i:i+12000]) for i in range(0,len(text),12000)]
     else:
         lines = path.read_text(encoding="utf-8-sig").splitlines()
         sections = []
@@ -125,8 +233,10 @@ def ingest(path):
     path = Path(path)
     if path.suffix.lower() not in EXT:
         raise ValueError("Unsupported file format.")
-    content = path.read_bytes()
-    docid = hashlib.sha256(content).hexdigest()
+    with path.open("rb") as f:
+        digest=hashlib.sha256()
+        for chunk in iter(lambda:f.read(1024*1024),b""):digest.update(chunk)
+    docid = digest.hexdigest()
     original = DATA / "originals" / docid
     original.mkdir(parents=True,exist_ok=True)
     saved = original / path.name
@@ -137,8 +247,11 @@ def ingest(path):
         if existing:
             saved = DATA / existing["original"]
         if not saved.exists():
-            saved.write_bytes(content)
+            shutil.copy2(path,saved)
         c.execute("INSERT OR IGNORE INTO documents VALUES(?,?,?,?,?,NULL)",(docid,path.name,str(saved.relative_to(DATA)),datetime.now(timezone.utc).isoformat(),"uploaded"))
+    if path.suffix.lower() in MEDIA:
+        with db() as c:c.execute("UPDATE documents SET status='media',error=NULL WHERE id=?",(docid,))
+        return docid
     try:
         sections = parse(saved)
     except Exception as exc:
@@ -160,7 +273,9 @@ def snapshot():
             "nodes":rows(c,"SELECT * FROM nodes ORDER BY name"),
             "placements":rows(c,"SELECT * FROM placements"),
             "sources":rows(c,"SELECT s.*,d.name AS document_name FROM sources s JOIN documents d ON s.document=d.id"),
-            "connections":rows(c,"SELECT * FROM connections")
+            "connections":rows(c,"SELECT * FROM connections"),
+            "collections":rows(c,"SELECT * FROM collections ORDER BY name"),
+            "document_collections":rows(c,"SELECT * FROM document_collections")
         }
 
 def pending():
@@ -254,6 +369,36 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
     def valid_host(self):
         return self.headers.get("Host") == f"127.0.0.1:{self.server.server_port}"
+    def send_file(self,path,typ,disposition):
+        size=path.stat().st_size
+        start,end=0,size-1
+        requested=self.headers.get("Range")
+        if requested:
+            m=re.fullmatch(r"bytes=(\d*)-(\d*)",requested)
+            if not m or not any(m.groups()) or not size:
+                self.send_response(416);self.send_header("Content-Range",f"bytes */{size}");self.end_headers();return
+            a,b=m.groups()
+            if not a:start=max(0,size-int(b))
+            else:start=int(a);end=min(end,int(b)) if b else end
+            if not 0<=start<=end<size:
+                self.send_response(416);self.send_header("Content-Range",f"bytes */{size}");self.end_headers();return
+        self.send_response(206 if requested else 200)
+        self.send_header("Content-Type",typ)
+        self.send_header("Content-Length",str(max(0,end-start+1)))
+        self.send_header("Accept-Ranges","bytes")
+        if requested:self.send_header("Content-Range",f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Disposition",f"{disposition}; filename*=UTF-8''{quote(path.name)}")
+        self.send_header("X-Content-Type-Options","nosniff")
+        self.send_header("Cache-Control","no-store")
+        self.end_headers()
+        with path.open("rb") as file:
+            file.seek(start);remaining=end-start+1
+            try:
+                while remaining>0:
+                    chunk=file.read(min(remaining,1024*1024))
+                    if not chunk:break
+                    self.wfile.write(chunk);remaining-=len(chunk)
+            except (BrokenPipeError,ConnectionResetError):pass
     def do_GET(self):
         if not self.valid_host():
             return self.send({"error":"Local access only"},status=403)
@@ -271,23 +416,32 @@ class Handler(BaseHTTPRequestHandler):
             if not d: return self.send({"error":"Not found"},status=404)
             p=DATA/d["original"]
             typ=mimetypes.guess_type(p.name)[0] or "application/octet-stream"
-            if p.suffix.lower() in {".md",".markdown",".txt"}: typ="text/plain; charset=utf-8"
-            disposition="inline" if p.suffix.lower()==".pdf" else "attachment"
-            return self.send(p.read_bytes(),typ,extra={"Content-Disposition":f"{disposition}; filename*=UTF-8''{quote(p.name)}"})
-        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css"):
+            if p.suffix.lower() in {".md",".markdown",".txt",".html",".htm"}: typ="text/plain; charset=utf-8"
+            disposition="inline" if p.suffix.lower() in ({".pdf"}|MEDIA) else "attachment"
+            return self.send_file(p,typ,disposition)
+        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js"):
             name="index.html" if u.path=="/" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
     def do_POST(self):
         action=urlparse(self.path).path
-        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position"):
+        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position"):
             return self.send({"error":"Request rejected"},status=403)
         try:
             length=int(self.headers.get("Content-Length","0"))
             if action!="/api/import":
-                if not 0<length<=1000000:
+                if not 0<length<=(25_000_000 if action=="/api/transcript" else 1000000):
                     raise ValueError("Invalid request size.")
                 payload=json.loads(self.rfile.read(length))
+                if action=="/api/collection":return self.send(collection_change(payload))
+                if action=="/api/transcript":return self.send(attach_transcript(payload))
+                if action=="/api/media-position":
+                    seconds=payload["seconds"]
+                    if type(seconds) not in (int,float) or not 0<=seconds<=100000000:raise ValueError("Invalid playback position.")
+                    with db() as c:
+                        if not c.execute("SELECT 1 FROM documents WHERE id=?",(payload["document"],)).fetchone():raise ValueError("Unknown document.")
+                        c.execute("INSERT INTO media_positions VALUES(?,?) ON CONFLICT(document) DO UPDATE SET seconds=excluded.seconds",(payload["document"],seconds))
+                    return self.send({"ok":True})
                 if action=="/api/highlight":
                     if payload.get("action")=="delete":
                         with db() as c:
@@ -300,13 +454,18 @@ class Handler(BaseHTTPRequestHandler):
                     c.execute("INSERT INTO reading_positions VALUES(?,?) ON CONFLICT(document) DO UPDATE SET label=excluded.label",(payload["document"],payload["label"]))
                 return self.send({"ok":True})
             name=parse_qs(urlparse(self.path).query).get("name",[""])[0]
-            if not name or Path(name).name!=name or "\\" in name or Path(name).suffix.lower() not in EXT or not 0<length<=100*1024*1024:
-                raise ValueError("Choose a supported file up to 100 MB.")
+            if not name or Path(name).name!=name or "\\" in name or Path(name).suffix.lower() not in EXT or not 0<length<=(1024*1024*1024 if Path(name).suffix.lower() in MEDIA else 100*1024*1024):
+                raise ValueError("Choose a supported file (text up to 100 MB; media up to 1 GB).")
             INBOX.mkdir(exist_ok=True)
             import tempfile
             with tempfile.TemporaryDirectory(dir=INBOX) as tmp:
                 p=Path(tmp)/name
-                p.write_bytes(self.rfile.read(length))
+                with p.open("wb") as out:
+                    remaining=length
+                    while remaining:
+                        chunk=self.rfile.read(min(remaining,1024*1024))
+                        if not chunk:raise ValueError("Incomplete upload.")
+                        out.write(chunk);remaining-=len(chunk)
                 docid=ingest(p)
             self.send({"id":docid})
         except Exception as exc:
