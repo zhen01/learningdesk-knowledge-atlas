@@ -25,6 +25,10 @@ def db():
     conn = sqlite3.connect(DATA / "atlas.sqlite", timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    # Back up the pre-upgrade database before adding new tables. Existing rows
+    # are never dropped, rewritten, or re-indexed by a schema upgrade.
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'").fetchone() and not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='highlights'").fetchone():
+        backup_db(conn, "before-reader-upgrade")
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,original TEXT NOT NULL,created TEXT NOT NULL,status TEXT NOT NULL,error TEXT);
     CREATE TABLE IF NOT EXISTS sections(document TEXT, label TEXT, text TEXT, PRIMARY KEY(document,label));
@@ -33,8 +37,49 @@ def db():
     CREATE TABLE IF NOT EXISTS sources(concept TEXT,document TEXT,label TEXT,quote TEXT,explanation TEXT,PRIMARY KEY(concept,document,label,quote));
     CREATE TABLE IF NOT EXISTS connections(id TEXT PRIMARY KEY,a TEXT,b TEXT,kind TEXT,explanation TEXT,document TEXT,label TEXT,quote TEXT);
     CREATE TABLE IF NOT EXISTS processed(document TEXT,label TEXT,PRIMARY KEY(document,label));
+    CREATE TABLE IF NOT EXISTS highlights(id TEXT PRIMARY KEY,document TEXT NOT NULL,label TEXT NOT NULL,start INTEGER NOT NULL,end INTEGER NOT NULL,quote TEXT NOT NULL,color TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',created TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS reading_positions(document TEXT PRIMARY KEY,label TEXT NOT NULL);
     """)
     return conn
+
+def backup_db(conn, reason="manual"):
+    folder=DATA/"backups"
+    folder.mkdir(parents=True,exist_ok=True)
+    path=folder/f"{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')}-{reason}.sqlite"
+    with sqlite3.connect(path) as target:
+        conn.backup(target)
+    return path
+
+def reader_document(doc):
+    with db() as c:
+        d=c.execute("SELECT id,name,status FROM documents WHERE id=?",(doc,)).fetchone()
+        if not d:
+            raise ValueError("Document not found.")
+        position=c.execute("SELECT label FROM reading_positions WHERE document=?",(doc,)).fetchone()
+        return {"document":dict(d),"sections":rows(c,"SELECT label,text FROM sections WHERE document=? ORDER BY rowid",(doc,)),
+                "highlights":rows(c,"SELECT * FROM highlights WHERE document=? ORDER BY label,start",(doc,)),
+                "position":position[0] if position else None}
+
+def save_highlight(payload):
+    doc,label=payload["document"],payload["label"]
+    start,end=payload["start"],payload["end"]
+    color=payload.get("color","yellow")
+    note=payload.get("note","")
+    if color not in ("yellow","green","blue","pink") or not isinstance(note,str) or len(note)>20000:
+        raise ValueError("Invalid highlight.")
+    with db() as c:
+        s=c.execute("SELECT text FROM sections WHERE document=? AND label=?",(doc,label)).fetchone()
+        if not s or type(start) is not int or type(end) is not int or not 0<=start<end<=len(s["text"]):
+            raise ValueError("Invalid selection.")
+        selected=s["text"][start:end]
+        if not selected.strip() or selected!=payload["quote"]:
+            raise ValueError("Selection does not match source.")
+        hid=key(doc,label,start,end)
+        existing=c.execute("SELECT note FROM highlights WHERE id=?",(hid,)).fetchone()
+        if existing and "note" not in payload:
+            note=existing["note"]
+        c.execute("INSERT INTO highlights VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET color=excluded.color,note=excluded.note",(hid,doc,label,start,end,selected,color,note,datetime.now(timezone.utc).isoformat()))
+        return dict(c.execute("SELECT * FROM highlights WHERE id=?",(hid,)).fetchone())
 
 def norm(s):
     return re.sub(r"[^\w]+", " ", unicodedata.normalize("NFKC", s).casefold()).strip()
@@ -101,7 +146,7 @@ def ingest(path):
             c.execute("UPDATE documents SET status='error',error=? WHERE id=?",(str(exc),docid))
         return docid
     with db() as c:
-        c.executemany("INSERT OR REPLACE INTO sections VALUES(?,?,?)",[(docid,l,t) for l,t in sections])
+        c.executemany("INSERT OR IGNORE INTO sections VALUES(?,?,?)",[(docid,l,t) for l,t in sections])
         c.execute("UPDATE documents SET status='ready',error=NULL WHERE id=?",(docid,))
     return docid
 
@@ -128,6 +173,11 @@ def apply(payload):
     if not isinstance(labels,list) or not labels or len(labels)!=len(set(labels)):
         raise ValueError("Specify unique section labels.")
     with db() as c:
+        # A daily snapshot protects already-paid-for AI work without creating a
+        # full copy for every small batch.
+        day=datetime.now(timezone.utc).strftime("%Y%m%d")
+        if not any((DATA/"backups").glob(f"{day}-*-before-index.sqlite")):
+            backup_db(c,"before-index")
         c.execute("BEGIN IMMEDIATE")
         texts = {r["label"]:r["text"] for r in c.execute("SELECT label,text FROM sections WHERE document=?",(doc,))}
         if any(l not in texts for l in labels):
@@ -210,6 +260,11 @@ class Handler(BaseHTTPRequestHandler):
         u=urlparse(self.path)
         if u.path=="/api/atlas":
             return self.send(snapshot())
+        if u.path=="/api/reader":
+            try:
+                return self.send(reader_document(parse_qs(u.query).get("id",[""])[0]))
+            except ValueError as exc:
+                return self.send({"error":str(exc)},status=404)
         if u.path=="/api/original":
             with db() as c:
                 d=c.execute("SELECT * FROM documents WHERE id=?",(parse_qs(u.query).get("id",[""])[0],)).fetchone()
@@ -219,15 +274,31 @@ class Handler(BaseHTTPRequestHandler):
             if p.suffix.lower() in {".md",".markdown",".txt"}: typ="text/plain; charset=utf-8"
             disposition="inline" if p.suffix.lower()==".pdf" else "attachment"
             return self.send(p.read_bytes(),typ,extra={"Content-Disposition":f"{disposition}; filename*=UTF-8''{quote(p.name)}"})
-        if u.path in ("/","/app.js","/style.css"):
+        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css"):
             name="index.html" if u.path=="/" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
     def do_POST(self):
-        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or urlparse(self.path).path!="/api/import":
+        action=urlparse(self.path).path
+        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position"):
             return self.send({"error":"Request rejected"},status=403)
         try:
             length=int(self.headers.get("Content-Length","0"))
+            if action!="/api/import":
+                if not 0<length<=1000000:
+                    raise ValueError("Invalid request size.")
+                payload=json.loads(self.rfile.read(length))
+                if action=="/api/highlight":
+                    if payload.get("action")=="delete":
+                        with db() as c:
+                            c.execute("DELETE FROM highlights WHERE id=?",(payload["id"],))
+                        return self.send({"ok":True})
+                    return self.send(save_highlight(payload))
+                with db() as c:
+                    if not c.execute("SELECT 1 FROM sections WHERE document=? AND label=?",(payload["document"],payload["label"])).fetchone():
+                        raise ValueError("Unknown reading position.")
+                    c.execute("INSERT INTO reading_positions VALUES(?,?) ON CONFLICT(document) DO UPDATE SET label=excluded.label",(payload["document"],payload["label"]))
+                return self.send({"ok":True})
             name=parse_qs(urlparse(self.path).query).get("name",[""])[0]
             if not name or Path(name).name!=name or "\\" in name or Path(name).suffix.lower() not in EXT or not 0<length<=100*1024*1024:
                 raise ValueError("Choose a supported file up to 100 MB.")
@@ -246,7 +317,7 @@ def main():
     sub=parser.add_subparsers(dest="cmd",required=True)
     serve=sub.add_parser("serve");serve.add_argument("--port",type=int,default=8765);serve.add_argument("--no-browser",action="store_true")
     imp=sub.add_parser("import");imp.add_argument("paths",nargs="*")
-    sub.add_parser("pending");sub.add_parser("catalog")
+    sub.add_parser("pending");sub.add_parser("catalog");sub.add_parser("backup")
     read=sub.add_parser("read");read.add_argument("document");read.add_argument("labels",nargs="+")
     write=sub.add_parser("apply");write.add_argument("file")
     args=parser.parse_args()
@@ -265,6 +336,9 @@ def main():
         print(json.dumps(pending(),ensure_ascii=False,indent=2))
     elif args.cmd=="catalog":
         print(json.dumps(snapshot(),ensure_ascii=False,indent=2))
+    elif args.cmd=="backup":
+        with db() as c:
+            print(backup_db(c))
     elif args.cmd=="read":
         with db() as c:
             print(json.dumps([dict(r) for l in args.labels for r in c.execute("SELECT label,text FROM sections WHERE document=? AND label=?",(args.document,l))],ensure_ascii=False,indent=2))
