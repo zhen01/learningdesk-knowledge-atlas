@@ -10,9 +10,9 @@ SOURCE = Path(__file__).resolve().parent
 CODE = (
     "atlas.py", "AGENTS.md", "README.md", "LICENSE", ".gitignore",
     "requirements.txt", "requirements-dev.txt", "setup.command",
-    "Start LearningDesk.command", "Index with Codex.command", "update_existing.py",
+    "Start LearningDesk.command", "Index with Codex.command", "Update LearningDesk.command", "update_existing.py",
     "test_atlas.py", "web/index.html", "web/app.js", "web/style.css",
-    "web/reader.js", "web/graph.js", "web/upgrade.css",
+    "web/reader.js", "web/graph.js", "web/upgrade.css", "web/library.js",
 )
 
 def update(destination, source=SOURCE):
