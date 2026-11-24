@@ -9,6 +9,33 @@ When the user asks to index learning materials, process the actual document cont
 5. Write a temporary JSON file outside `data/` with the structure below. Use the `apply` command, never edit SQLite directly. The tool validates citations and applies each batch atomically. Correct failed validation before proceeding. Empty concepts and connections are valid for noneducational front matter. Do not index operationally dangerous content that assists harm; focus on safe learning.
 6. Repeat until no pending source sections remain, or explain remaining work if session limits prevent completion. Preserve all originals and previously indexed concepts. Tell the user to refresh the local interface when done.
 
+## Generate each material's roadmap while indexing
+
+The roadmap is a meaningful, document-specific learning sequence, not a generic career curriculum or a page checklist.
+
+- While reading the actual material for knowledge extraction, also determine the natural chapters, themes, prerequisites, and learning outcomes. Follow the source order. For a user-imported study plan, preserve its explicit sequence and tasks; do not impose a different schedule.
+- Add a `roadmap` array to each `apply` batch. Every source label in `sections` must be assigned to exactly one group. A group has a stable `module` identifier, `title`, `goal` (what the reader will understand), and `labels` (the actual section labels). Group related sections into substantive topics rather than arbitrary page counts; use a concise optional/front-matter group when necessary. Do not invent chapter titles or pretend to have read content you have not seen.
+- Before processing later batches of a document, run `.venv/bin/python atlas.py roadmap-context DOCUMENT_ID` to inspect existing modules. Reuse a module ID and its exact saved title and goal for a continuation of the same topic. Add genuinely new modules; do not overwrite or rename existing ones or reset checked sections.
+- After normal indexing, run `.venv/bin/python atlas.py roadmap-pending`. For already indexed documents with missing roadmap groups, use `.venv/bin/python atlas.py roadmap-context DOCUMENT_ID` to inspect saved concept explanations, evidence quotes and section openings. Organize that existing knowledge into modules; read only additional source sections needed to disambiguate. Do **not** re-extract concepts or rerun `apply` against processed sections. Save with `.venv/bin/python atlas.py roadmap-apply /path/to/roadmap.json`, containing document, sections and roadmap keys. Work in batches when needed.
+- Preserve all learning checkmarks; they are linked to the actual source labels and automatically carry over to the AI-created modules. Do not create new generic coding drills or schedules unless explicitly requested.
+
+Example roadmap shape (illustrative labels only):
+
+```json
+{
+  "document": "actual-document-id",
+  "sections": ["Page 1", "Page 2"],
+  "roadmap": [
+    {
+      "module": "stable-topic-key",
+      "title": "Actual topic from the material",
+      "goal": "A concise, source-grounded learning outcome.",
+      "labels": ["Page 1", "Page 2"]
+    }
+  ]
+}
+```
+
 ## Data preservation (mandatory)
 
 - Never delete, recreate, overwrite or edit the existing `data/atlas.sqlite`, `data/originals/`, `data/backups/`, `inbox/`, annotations or reading positions as part of an update. Never run a full rebuild of the atlas.
