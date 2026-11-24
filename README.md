@@ -1,10 +1,37 @@
 # LearningDesk 2.0 — Knowledge Atlas
 
-Your personal, local academic knowledge base. No website hosting, API key or separate OpenAI API billing is needed. The Codex CLI uses your signed-in ChatGPT account and its applicable usage limits for analysis.
+**Make what you read connect.**
+
+![LearningDesk illustrated interface preview](docs/atlas-preview.svg)
+
+*Illustrated preview with synthetic sample concepts; never taken from a personal library.*
+
+LearningDesk turns a collection of PDFs, documents and notes into a continuously growing, source-linked atlas. Instead of asking an AI to summarize the same textbook again, keep the extracted knowledge, discover connections to other subjects, and return to the original passage whenever you need context.
+
+Local-first · Python + SQLite · Native JavaScript · Codex CLI · MIT
+
+No website hosting, API key or separate OpenAI API billing is needed. The Codex CLI uses your signed-in ChatGPT account and its applicable usage limits for analysis.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[PDF / DOCX / notes] --> B[Parse and save originals]
+    B --> C[Pending sections]
+    C --> D[Codex indexes new material]
+    D --> E[(SQLite knowledge atlas)]
+    E --> F[Tree, graph and reader]
+    F --> E
+```
 
 ## First launch (Mac)
 
-1. Unzip or clone into a permanent folder, e.g. `~/Documents/LearningDesk2`. Keep this folder.
+1. Clone or unzip into a permanent folder. For example:
+
+   ```sh
+   git clone https://github.com/zhen01/learningdesk-knowledge-atlas.git ~/Documents/LearningDesk2
+   cd ~/Documents/LearningDesk2
+   ```
 2. Open Terminal and enter `cd ~/Documents/LearningDesk2` (change the path if needed).
 3. Run `bash setup.command`. Python 3 must be installed. This installs two document parsing libraries.
 4. Run `bash "Start LearningDesk.command"` in Terminal. The local interface opens at http://127.0.0.1:8765. Keep its Terminal window open. macOS may block double-clicked downloaded scripts, so use Terminal.
@@ -14,7 +41,13 @@ Your personal, local academic knowledge base. No website hosting, API key or sep
 
 ## Update an existing installation (preserve your atlas)
 
-Stop the local server with Ctrl+C. Back up the entire existing LearningDesk2 folder first, then update the source files in that same folder. If this is a Git clone, run `git pull` from the folder. If you downloaded a ZIP, copy the new code over the old code without replacing `data/` or `inbox/`. Never unzip into a new folder and expect the old database to follow automatically.
+Stop the local server and any active indexing session. If your installation is a Git clone, run `git pull` in the original folder. If you downloaded an older ZIP, download the latest source into a **different** folder, then run the updater from that new folder:
+
+```sh
+python3 update_existing.py ~/Downloads/LearningDesk2
+```
+
+Change the destination to your actual existing installation folder. The updater copies only an explicit list of application source files and takes a SQLite backup first. It never replaces your existing database, originals, inbox or virtual environment. Never unzip into a new folder and expect the old database to follow automatically. For full disaster recovery, also keep an independent copy of your entire original folder.
 
 The app automatically creates a SQLite backup before the reader schema upgrade and once per day before indexing. You can also run `.venv/bin/python atlas.py backup`. All updates are incremental: previously processed sections are skipped, existing concept definitions and source references remain, and duplicate uploads reuse the existing document hash.
 
@@ -35,4 +68,15 @@ The server listens only on loopback; it is accessible to processes and users on 
 
 Text-bearing PDFs are supported; scanned or image-only PDFs need OCR first. DOCX paragraphs and tables are parsed, not embedded images. Source references use PDF pages, DOCX paragraph/table numbers, and text line ranges. Complex tables, equations and multi-column PDFs may require manual review.
 
-Indexing is initiated by you through Codex, not a continuously running autonomous service. Large books may require several sessions due to model context or account limits; pending sections can be resumed. Deduplication and connections depend on the quality of Codex's analysis. Graph visualization can become crowded with very large collections. The local server itself makes no network calls.
+Indexing is initiated by you through Codex, not a continuously running autonomous service. Large books may require several sessions due to model context or account limits; pending sections can be resumed. Deduplication and connections depend on the quality of Codex's analysis. Graph visualization can become crowded with very large collections; use the domain and focus filters. The local server itself makes no external network calls.
+
+## Development
+
+```sh
+python3 -m pip install -r requirements-dev.txt
+python3 -m unittest -v test_atlas
+```
+
+The public repository contains application code and synthetic test fixtures only. Documents, the SQLite database, backup snapshots and user annotations stay on the user's computer and are excluded by `.gitignore`.
+
+MIT license.
