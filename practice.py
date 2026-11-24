@@ -33,9 +33,11 @@ def schema(c):
     CREATE TABLE IF NOT EXISTS study_plans(id INTEGER PRIMARY KEY CHECK(id=1),track TEXT,start TEXT,days INTEGER,minutes INTEGER);
     CREATE TABLE IF NOT EXISTS chapter_done(document TEXT,label TEXT,PRIMARY KEY(document,label));
     CREATE TABLE IF NOT EXISTS mistake_notes(problem TEXT PRIMARY KEY,note TEXT NOT NULL DEFAULT '',resolved INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS material_modules(document TEXT NOT NULL,module TEXT NOT NULL,title TEXT NOT NULL,goal TEXT NOT NULL DEFAULT '',PRIMARY KEY(document,module));
+    CREATE TABLE IF NOT EXISTS module_sections(document TEXT NOT NULL,label TEXT NOT NULL,module TEXT NOT NULL,PRIMARY KEY(document,label));
     """)
 
-def chapter_roadmap(c,doc):
+def legacy_chapter_roadmap(c,doc):
     sections=list(c.execute("SELECT label,text FROM sections WHERE document=? ORDER BY rowid",(doc,)))
     completed={r[0] for r in c.execute("SELECT label FROM chapter_done WHERE document=?",(doc,))}
     # Use actual indexed concepts as descriptive labels; keep source order and
@@ -64,6 +66,66 @@ def chapter_roadmap(c,doc):
         items=group["sections"];group["done"]=all(x["done"] for x in items);group["completed"]=sum(x["done"] for x in items)
         group["range"]=items[0]["label"]+(" – "+items[-1]["label"] if len(items)>1 else "")
     return {"groups":groups,"total":len(result),"completed":sum(x["done"] for x in result)}
+
+def roadmap_pending(c):
+    return [dict(r) for r in c.execute("""
+        SELECT d.id AS document,d.name,COUNT(*) AS sections_pending
+        FROM documents d JOIN processed p ON p.document=d.id
+        LEFT JOIN module_sections m ON m.document=p.document AND m.label=p.label
+        WHERE m.label IS NULL GROUP BY d.id,d.name ORDER BY d.created
+    """)]
+
+def roadmap_context(c,doc):
+    # Reuse existing extracted knowledge and source evidence, rather than
+    # asking the agent to repeat extraction on unchanged documents.
+    modules=[dict(x) for x in c.execute("SELECT module,title,goal FROM material_modules WHERE document=? ORDER BY rowid",(doc,))]
+    sections=[]
+    for r in c.execute("""SELECT s.label,s.text FROM sections s JOIN processed p ON p.document=s.document AND p.label=s.label
+        LEFT JOIN module_sections m ON m.document=s.document AND m.label=s.label
+        WHERE s.document=? AND m.label IS NULL ORDER BY s.rowid""",(doc,)):
+        evidence=[dict(x) for x in c.execute("SELECT n.name,n.explanation,s.quote FROM sources s JOIN nodes n ON n.id=s.concept WHERE s.document=? AND s.label=? ORDER BY n.name",(doc,r["label"]))]
+        sections.append({"label":r["label"],"opening":r["text"][:350],"concepts":evidence})
+    return {"document":doc,"existing_modules":modules,"unassigned_sections":sections}
+
+def save_roadmap(c,doc,groups,allowed_labels=None):
+    if not isinstance(groups,list) or len(groups)>500:raise ValueError("Provide roadmap groups.")
+    if not c.execute("SELECT 1 FROM documents WHERE id=?",(doc,)).fetchone():raise ValueError("Unknown document.")
+    if allowed_labels is None:
+        allowed_labels={r[0] for r in c.execute("SELECT p.label FROM processed p LEFT JOIN module_sections m ON m.document=p.document AND m.label=p.label WHERE p.document=? AND m.label IS NULL",(doc,))}
+    else:allowed_labels=set(allowed_labels)
+    assigned=set()
+    for group in groups:
+        module,title,goal=group["module"],group["title"],group.get("goal","")
+        labels=group["labels"]
+        if not isinstance(module,str) or not module.strip() or len(module)>120 or not isinstance(title,str) or not title.strip() or len(title)>200 or not isinstance(goal,str) or len(goal)>1200:
+            raise ValueError("Invalid module metadata.")
+        if not isinstance(labels,list) or not labels or len(labels)!=len(set(labels)) or any(x not in allowed_labels for x in labels):
+            raise ValueError("Roadmap references an unknown or unindexed section.")
+        if assigned.intersection(labels):raise ValueError("A section may appear only once per batch.")
+        assigned.update(labels)
+        existing=c.execute("SELECT title,goal FROM material_modules WHERE document=? AND module=?",(doc,module)).fetchone()
+        if existing and (existing["title"]!=title or existing["goal"]!=goal):
+            raise ValueError("Reuse existing module metadata exactly; do not overwrite it.")
+        c.execute("INSERT OR IGNORE INTO material_modules VALUES(?,?,?,?)",(doc,module,title,goal))
+        for label in labels:
+            previous=c.execute("SELECT module FROM module_sections WHERE document=? AND label=?",(doc,label)).fetchone()
+            if previous and previous["module"]!=module:raise ValueError("This source section already belongs to a saved module.")
+            c.execute("INSERT OR IGNORE INTO module_sections VALUES(?,?,?)",(doc,label,module))
+    if assigned!=allowed_labels:raise ValueError("Every section in this roadmap batch must have a module.")
+
+def chapter_roadmap(c,doc):
+    existing=legacy_chapter_roadmap(c,doc)
+    sections={s["label"]:s for g in existing["groups"] for s in g["sections"]}
+    modules=[dict(x) for x in c.execute("SELECT module,title,goal FROM material_modules WHERE document=?",(doc,))]
+    assignments={r[0]:r[1] for r in c.execute("SELECT label,module FROM module_sections WHERE document=?",(doc,))}
+    groups=[]
+    for m in modules:
+        items=[s for label,s in sections.items() if assignments.get(label)==m["module"]]
+        if not items:continue
+        groups.append({**m,"sections":items,"done":all(s["done"] for s in items),"completed":sum(s["done"] for s in items),"range":items[0]["label"]+(" – "+items[-1]["label"] if len(items)>1 else "")})
+    order={label:i for i,label in enumerate(sections)}
+    groups.sort(key=lambda g:order[g["sections"][0]["label"]])
+    return {"groups":groups,"total":existing["total"],"completed":existing["completed"],"pending":len(sections)-len(assignments),"legacy_groups":existing["groups"] if not groups else []}
 
 def state(c):
     plan=c.execute("SELECT * FROM study_plans WHERE id=1").fetchone()
