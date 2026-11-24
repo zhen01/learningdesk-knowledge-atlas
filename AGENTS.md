@@ -9,6 +9,13 @@ When the user asks to index learning materials, process the actual document cont
 5. Write a temporary JSON file outside `data/` with the structure below. Use the `apply` command, never edit SQLite directly. The tool validates citations and applies each batch atomically. Correct failed validation before proceeding. Empty concepts and connections are valid for noneducational front matter. Do not index operationally dangerous content that assists harm; focus on safe learning.
 6. Repeat until no pending source sections remain, or explain remaining work if session limits prevent completion. Preserve all originals and previously indexed concepts. Tell the user to refresh the local interface when done.
 
+## Data preservation (mandatory)
+
+- Never delete, recreate, overwrite or edit the existing `data/atlas.sqlite`, `data/originals/`, `data/backups/`, `inbox/`, annotations or reading positions as part of an update. Never run a full rebuild of the atlas.
+- Use pending sections only; processed sections are excluded automatically. Existing explanations, references and relationships are preserved, and new source evidence is appended. Do not spend model tokens reprocessing an unchanged file.
+- Before a source-code upgrade, run `.venv/bin/python atlas.py backup` (or `python3 atlas.py backup` if the virtual environment is not available). The app also backs up the database prior to schema changes and once per day before indexing.
+- Documents are immutable once imported. If the same filename has changed content, it is a new document version; preserve both source IDs and annotations. A database backup is not a backup of the originals; retain and periodically copy the entire data folder.
+
 ```json
 {
   "document": "actual-document-id",
