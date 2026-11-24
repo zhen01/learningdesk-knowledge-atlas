@@ -81,6 +81,7 @@ Text-bearing PDFs are supported; scanned or image-only PDFs need OCR first. DOCX
 | Format | Reader | Codex indexing |
 |---|---|---|
 | PDF, DOCX, Markdown, TXT | Extracted text, highlights, notes, local speech | Yes |
+| PPTX | Slide-by-slide extracted text, original deck download | Yes |
 | CSV, JSON, HTML | Readable, parsed sections | Yes |
 | SRT, VTT | Subtitle text and timestamped sections | Yes |
 | MP4, WebM, MOV, M4V | Browser video player, saved playback position | Attach a transcript |
@@ -90,6 +91,24 @@ Text-bearing PDFs are supported; scanned or image-only PDFs need OCR first. DOCX
 Media playback depends on browser codec support. For video/audio, attach an existing SRT, VTT, TXT or Markdown transcript in the reader. Timestamped transcript sections link back to playback positions. Transcript indexing is incremental and never rewrites previous source references. Automatic speech-to-text, OCR, streamed website videos and DRM-protected video are not supported. Browser imports support text files up to 100 MB and media files up to 1 GB; use the inbox for larger local media. Processing media does not require an API key.
 
 Default collections are Career, Product Data Science, Textbook Knowledge, and Fun Knowledge. Create your own and assign more than one collection to a material. Existing materials initially remain Unsorted until you classify them; collections are independent from AI-generated domains and do not change knowledge nodes or existing source evidence.
+
+## Study workspace
+
+- Rename materials using their display names; original filenames, source IDs and AI evidence remain unchanged.
+- Save per-material notes, estimated reading/playback progress and manual completion. Completion is explicit; position is not a measure of comprehension.
+- DOCX opens as continuous extracted text by default. Switch between continuous and section view. Select within a source section to highlight.
+- Use Full screen / focus to hide the workspace chrome, or Full-page PDF to read the original PDF in an expanded viewer. PPTX displays extracted slide text; open the original in PowerPoint or Keynote for exact artwork and animations.
+- Flashcards: import CSV or TSV with Front and Back columns, or a JSON array of objects with front and back fields. Flip cards, mark known or review again, and keep deck progress across sessions. Reimporting identical cards preserves their status.
+
+## Move your library between computers
+
+For a free, manual handoff, stop the server and indexing, then export a portable ZIP:
+
+```sh
+.venv/bin/python atlas.py export-library ~/Desktop/LearningDesk-library.zip
+```
+
+Transfer the ZIP using external storage or a private cloud drive you already use (subject to its storage quota). On the other machine, install LearningDesk and stop its server, extract the ZIP into a new temporary folder, then copy its data and inbox folders into an **empty** installation. If the destination already has a library, back it up and do not overwrite it; independent libraries are not automatically merged. Never sync the live SQLite/WAL database while it is open, and never commit exported libraries to public GitHub.
 
 Indexing is initiated by you through Codex, not a continuously running autonomous service. Large books may require several sessions due to model context or account limits; pending sections can be resumed. Deduplication and connections depend on the quality of Codex's analysis. Graph visualization can become crowded with very large collections; use the domain and focus filters. The local server itself makes no external network calls.
 
