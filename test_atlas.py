@@ -11,12 +11,22 @@ class AtlasTest(unittest.TestCase):
             p.write_text("# Chapter 1\nSQL joins match rows.\n# Chapter 2\nWindow functions rank rows.")
             doc=atlas.ingest(p)
             before=atlas.snapshot()
+            labels=[x["label"] for x in atlas.pending()]
+            atlas.apply({"document":doc,"sections":labels,"concepts":[],"connections":[]})
             with atlas.db() as c:
                 roadmap=practice.chapter_roadmap(c,doc)
-                self.assertEqual(len(roadmap["groups"]),2)
-                label=roadmap["groups"][0]["sections"][0]["label"]
+                self.assertEqual(roadmap["groups"],[])
+                self.assertEqual(roadmap["pending"],2)
+                label=labels[0]
                 practice.action(c,{"action":"chapter","document":doc,"labels":[label],"done":True})
                 self.assertEqual(practice.chapter_roadmap(c,doc)["completed"],1)
+                self.assertEqual(len(practice.roadmap_context(c,doc)["unassigned_sections"]),2)
+                practice.save_roadmap(c,doc,[{"module":"joins","title":"Relational joins","goal":"Understand row matching.","labels":[labels[0]]},{"module":"windows","title":"Window functions","goal":"Understand row ranking.","labels":[labels[1]]}],labels)
+                roadmap=practice.chapter_roadmap(c,doc)
+                self.assertEqual([g["title"] for g in roadmap["groups"]],["Relational joins","Window functions"])
+                self.assertTrue(roadmap["groups"][0]["done"])
+                self.assertFalse(roadmap["groups"][1]["done"])
+                self.assertEqual(practice.roadmap_pending(c),[])
                 for p in practice.PROBLEMS:
                     result=practice.run_problem(c,{"problem":p["id"],"code":p["solution"]})
                     self.assertTrue(result["passed"],result)
@@ -30,6 +40,18 @@ class AtlasTest(unittest.TestCase):
             for key in ("nodes","sources","connections","placements"):
                 self.assertEqual(before[key],after[key])
             self.assertEqual(after["documents"][0]["chapters_done"],1)
+    def test_index_can_save_roadmap_atomically(self):
+        import practice
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data";p=root/"material.txt";p.write_text("Understanding how grouped queries summarize data.")
+            doc=atlas.ingest(p);labels=[x["label"] for x in atlas.pending()]
+            invalid={"document":doc,"sections":labels,"concepts":[],"connections":[],"roadmap":[{"module":"agg","title":"Aggregation","labels":["not a real label"]}]}
+            with self.assertRaises(ValueError):atlas.apply(invalid)
+            self.assertEqual([x["label"] for x in atlas.pending()],labels)
+            atlas.apply({**invalid,"roadmap":[{"module":"agg","title":"Aggregation","goal":"Summarize rows by group.","labels":labels}]})
+            with atlas.db() as c:
+                self.assertEqual(practice.chapter_roadmap(c,doc)["groups"][0]["title"],"Aggregation")
+                self.assertEqual(practice.roadmap_pending(c),[])
     def test_study_metadata_and_deck_reimport(self):
         import study
         with tempfile.TemporaryDirectory() as temp:
