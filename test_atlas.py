@@ -4,6 +4,34 @@ from pathlib import Path
 import atlas
 
 class AtlasTest(unittest.TestCase):
+    def test_reader_annotations_survive_upgrade_and_indexing(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data"
+            p=root/"notes.txt";p.write_text("A 🐱 is an example. Knowledge persists across sessions.",encoding="utf-8")
+            docid=atlas.ingest(p)
+            label=atlas.pending()[0]["label"]
+            # Simulate the pre-reader schema without modifying real user data.
+            with atlas.db() as c:
+                c.execute("DROP TABLE highlights")
+                c.execute("DROP TABLE reading_positions")
+            before=atlas.snapshot()
+            self.assertEqual(before["documents"][0]["id"],docid)
+            backup=next((atlas.DATA/"backups").glob("*before-reader-upgrade.sqlite"))
+            with sqlite3.connect(backup) as c:
+                self.assertEqual(c.execute("SELECT id FROM documents").fetchone()[0],docid)
+            payload={"document":docid,"label":label,"start":2,"end":3,"quote":"🐱","color":"yellow","note":"A personal note."}
+            m=atlas.save_highlight(payload)
+            self.assertEqual(atlas.reader_document(docid)["highlights"][0]["note"],"A personal note.")
+            updated=dict(payload);updated.pop("note");updated["color"]="green"
+            self.assertEqual(atlas.save_highlight(updated)["note"],"A personal note.")
+            with self.assertRaises(ValueError):atlas.save_highlight({**payload,"quote":"wrong"})
+            with atlas.db() as c:c.execute("INSERT INTO reading_positions VALUES(?,?)",(docid,label))
+            atlas.apply({"document":docid,"sections":[label],"concepts":[],"connections":[]})
+            self.assertEqual(atlas.reader_document(docid)["position"],label)
+            self.assertEqual(atlas.reader_document(docid)["highlights"][0]["id"],m["id"])
+            self.assertEqual(atlas.ingest(p),docid)
+            self.assertEqual(atlas.pending(),[])
     def test_import_merge_evidence_and_persistence(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
