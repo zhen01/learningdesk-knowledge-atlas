@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+<title id="title">LearningDesk — turn reading into a connected atlas</title><desc id="desc">Illustrated interface with a knowledge tree, related concepts and a source-linked reading highlight. All examples are synthetic.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#203b32"/><stop offset="1" stop-color="#101e1b"/></linearGradient>
+  <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="1" fill="#dee5dd"/></pattern>
+  <filter id="shadow"><feDropShadow dx="0" dy="16" stdDeviation="14" flood-opacity=".23"/></filter>
+</defs>
+<rect width="1200" height="630" rx="22" fill="url(#bg)"/>
+<g font-family="system-ui,-apple-system,sans-serif">
+  <text x="48" y="43" font-size="13" letter-spacing="3" fill="#c0d3c6">LEARNINGDESK  /  KNOWLEDGE ATLAS</text>
+  <text x="47" y="104" font-family="Georgia,serif" font-size="46" fill="#f4f6ef">Make what you read connect.</text>
+  <text x="49" y="138" font-size="17" fill="#bacfc1">Local documents → incremental AI indexing → a lasting, source-linked knowledge graph.</text>
+  <g filter="url(#shadow)">
+    <rect x="48" y="174" width="1104" height="386" rx="13" fill="#fff"/>
+    <rect x="48" y="174" width="210" height="386" rx="13" fill="#f2f4ef"/>
+    <rect x="247" y="174" width="10" height="386" fill="#f2f4ef"/>
+    <path d="M258 174V560M793 174V560M258 218H1152" stroke="#e1e6df" stroke-width="1.4"/>
+    <rect x="65" y="190" width="30" height="30" rx="7" fill="#355747"/><text x="80" y="212" text-anchor="middle" font-size="22" fill="#fff">✳</text>
+    <text x="105" y="209" font-size="15" font-weight="700" fill="#263f34">LearningDesk</text>
+    <text x="66" y="253" font-size="10" font-weight="700" letter-spacing="1.4" fill="#89968b">WORKSPACE</text>
+    <rect x="61" y="266" width="182" height="33" rx="6" fill="#dde8db"/>
+    <text x="76" y="287" font-size="13" font-weight="650" fill="#355747">⌘  Knowledge Tree</text>
+    <text x="76" y="321" font-size="13" fill="#53645a">◉  Connections</text>
+    <text x="76" y="352" font-size="13" fill="#53645a">▤  Library</text>
+    <text x="66" y="390" font-size="10" font-weight="700" letter-spacing="1.4" fill="#89968b">DOMAINS</text>
+    <circle cx="77" cy="413" r="5" fill="#638978"/><text x="90" y="418" font-size="13" fill="#394940">Statistics</text>
+    <circle cx="77" cy="443" r="5" fill="#bd8c59"/><text x="90" y="448" font-size="13" fill="#394940">Product analytics</text>
+    <circle cx="77" cy="473" r="5" fill="#668eaf"/><text x="90" y="478" font-size="13" fill="#394940">Data engineering</text>
+    <circle cx="77" cy="529" r="4" fill="#538760"/><text x="90" y="533" font-size="12" fill="#6a796f">Saved locally</text>
+    <text x="280" y="201" font-size="12" fill="#89958c">Workspace / Connections</text>
+    <rect x="669" y="184" width="104" height="24" rx="5" fill="#355747"/><text x="721" y="200" text-anchor="middle" font-size="11" fill="#fff">+ Import</text>
+    <text x="281" y="244" font-size="10" font-weight="650" letter-spacing="1.8" fill="#89958c">KNOWLEDGE CONNECTIONS</text>
+    <text x="281" y="278" font-family="Georgia,serif" font-size="29" fill="#26312b">Where ideas meet.</text>
+    <rect x="280" y="296" width="490" height="244" rx="10" fill="url(#dots)" stroke="#dce4db"/>
+    <rect x="296" y="309" width="206" height="217" rx="8" fill="#edf4ee" stroke="#cbded0"/>
+    <rect x="548" y="309" width="206" height="217" rx="8" fill="#fbf2e7" stroke="#ead7be"/>
+    <text x="307" y="332" font-size="12" font-weight="700" fill="#638978">STATISTICS</text>
+    <text x="558" y="332" font-size="12" font-weight="700" fill="#ad8255">PRODUCT ANALYTICS</text>
+    <path d="M399 372L651 372M399 429L651 429M399 372L651 486M399 429L399 486M651 372L651 429" stroke="#a89bb5" stroke-width="2" stroke-opacity=".85" fill="none"/>
+    <g fill="#fff" stroke="#8eb49c"><rect x="307" y="350" width="184" height="44" rx="6"/><rect x="307" y="407" width="184" height="44" rx="6"/><rect x="307" y="464" width="184" height="44" rx="6"/></g>
+    <g fill="#fff" stroke="#c7a47b"><rect x="559" y="350" width="184" height="44" rx="6"/><rect x="559" y="407" width="184" height="44" rx="6"/><rect x="559" y="464" width="184" height="44" rx="6"/></g>
+    <g font-size="12" fill="#34473b"><text x="324" y="376">Random assignment</text><text x="324" y="433">Confounding</text><text x="324" y="490">Causal inference</text><text x="576" y="376">A/B experimentation</text><text x="576" y="433">Selection bias</text><text x="576" y="490">Guardrail metrics</text></g>
+    <g fill="#638978"><circle cx="316" cy="372" r="3"/><circle cx="316" cy="429" r="3"/><circle cx="316" cy="486" r="3"/></g><g fill="#bd8c59"><circle cx="568" cy="372" r="3"/><circle cx="568" cy="429" r="3"/><circle cx="568" cy="486" r="3"/></g>
+    <text x="816" y="244" font-size="10" font-weight="650" letter-spacing="1.7" fill="#89958c">CONCEPT INSPECTOR</text>
+    <text x="816" y="278" font-family="Georgia,serif" font-size="26" fill="#26312b">Random assignment</text>
+    <rect x="816" y="291" width="74" height="21" rx="4" fill="#e4efe4"/><text x="824" y="305" font-size="11" fill="#52715e">Statistics</text>
+    <text x="816" y="337" font-size="13" fill="#586b5f">Assigning units by chance helps</text><text x="816" y="355" font-size="13" fill="#586b5f">balance confounders across groups.</text>
+    <text x="816" y="389" font-size="10" font-weight="700" letter-spacing="1.3" fill="#89958c">SOURCE REFERENCE</text>
+    <rect x="816" y="401" width="312" height="104" rx="7" fill="#fbfcfa" stroke="#e3e8df"/>
+    <text x="829" y="423" font-size="12" font-weight="650" fill="#537661">Experiment Design Notes · Page 3</text>
+    <rect x="829" y="440" width="284" height="22" rx="3" fill="#f8e7aa"/>
+    <text x="834" y="455" font-size="12" fill="#4c5144">Random allocation helps balance confounders.</text>
+    <text x="829" y="486" font-size="12" fill="#758378">Open reader  •  Highlight  •  Listen</text>
+    <text x="816" y="534" font-size="11" fill="#859286">Source-linked, not a black box.</text>
+  </g>
+  <text x="48" y="598" font-size="13" fill="#b9cdbf">BUILT WITH PYTHON  ·  SQLITE  ·  NATIVE JS  ·  CODEX CLI</text>
+  <text x="1152" y="598" text-anchor="end" font-size="12" fill="#a4baaa">Illustrated preview · synthetic sample content</text>
+</g></svg>
