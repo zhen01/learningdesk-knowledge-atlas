@@ -4,6 +4,25 @@ from pathlib import Path
 import atlas
 
 class AtlasTest(unittest.TestCase):
+    def test_reading_list_research_queue_and_existing_data(self):
+        import later
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);atlas.DATA=root/"data";p=root/"notes.txt";p.write_text("Existing learning material.")
+            doc=atlas.ingest(p);before=atlas.snapshot()
+            with atlas.db() as c:
+                self.assertEqual(len(later.state(c)),6)
+                later.action(c,{"id":"ddia","status":"reading","note":"My own note"})
+                item=later.action(c,{"kind":"research","title":"Distributed systems textbook","category":"Data & Systems","note":"Research later."})
+                later.action(c,{"id":item["id"],"document":doc,"status":"added"})
+                with self.assertRaises(ValueError):later.action(c,{"kind":"reading","title":"Invalid","url":"javascript:alert(1)"})
+            with atlas.db() as c:
+                items={x["id"]:x for x in later.state(c)}
+                self.assertEqual(len(items),7)
+                self.assertEqual(items["ddia"]["note"],"My own note")
+                self.assertEqual(items["ddia"]["status"],"reading")
+                self.assertEqual(items[item["id"]]["document"],doc)
+                self.assertEqual(items[item["id"]]["status"],"added")
+            self.assertEqual(atlas.snapshot(),before)
     def test_practice_and_chapter_checklist(self):
         import practice
         with tempfile.TemporaryDirectory() as temp:
