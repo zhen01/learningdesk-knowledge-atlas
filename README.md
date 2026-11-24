@@ -6,7 +6,7 @@
 
 *Illustrated preview with synthetic sample concepts; never taken from a personal library.*
 
-LearningDesk turns a collection of PDFs, documents and notes into a continuously growing, source-linked atlas. Instead of asking an AI to summarize the same textbook again, keep the extracted knowledge, discover connections to other subjects, and return to the original passage whenever you need context.
+LearningDesk turns a collection of PDFs, documents, datasets, videos, audio and notes into a continuously growing, source-linked atlas. Instead of asking an AI to summarize the same textbook again, keep the extracted knowledge, discover connections to other subjects, and return to the original passage whenever you need context.
 
 Local-first · Python + SQLite · Native JavaScript · Codex CLI · MIT
 
@@ -35,7 +35,7 @@ flowchart LR
 2. Open Terminal and enter `cd ~/Documents/LearningDesk2` (change the path if needed).
 3. Run `bash setup.command`. Python 3 must be installed. This installs two document parsing libraries.
 4. Run `bash "Start LearningDesk.command"` in Terminal. The local interface opens at http://127.0.0.1:8765. Keep its Terminal window open. macOS may block double-clicked downloaded scripts, so use Terminal.
-5. Import a PDF, DOCX, Markdown or TXT file through the interface or drag files into the `inbox` directory.
+5. Import a document, dataset or media file through the interface or drag files into the `inbox` directory.
 6. Open a second Terminal in this folder and run `bash "Index with Codex.command"` or open Codex CLI and ask: **Index all pending learning materials according to AGENTS.md.** Sign in with ChatGPT (not an API key). Review any file write approvals Codex requests.
 7. Refresh LearningDesk when indexing finishes.
 
@@ -49,13 +49,21 @@ python3 update_existing.py ~/Downloads/LearningDesk2
 
 Change the destination to your actual existing installation folder. The updater copies only an explicit list of application source files and takes a SQLite backup first. It never replaces your existing database, originals, inbox or virtual environment. Never unzip into a new folder and expect the old database to follow automatically. For full disaster recovery, also keep an independent copy of your entire original folder.
 
+After this first upgrade, future updates are one command from your original folder:
+
+```sh
+bash "Update LearningDesk.command"
+```
+
+Stop the server and indexing sessions first. The updater downloads the latest public source and copies only allowed application files into the existing folder. Restart using `bash "Start LearningDesk.command"`.
+
 The app automatically creates a SQLite backup before the reader schema upgrade and once per day before indexing. You can also run `.venv/bin/python atlas.py backup`. All updates are incremental: previously processed sections are skipped, existing concept definitions and source references remain, and duplicate uploads reuse the existing document hash.
 
 ## Four views
 
 - **Knowledge Tree**: domains, modules, submodules, concepts. Expand/collapse, search ideas, and click a concept to view its references.
 - **Connections**: spaced, grouped domain layout with zoom and pan, domain filters, cross-domain relationships, and a focused one-hop neighborhood mode. Click a card or a relationship line.
-- **Library**: original documents, local import status, source downloads, and access to the reader.
+- **Library**: original documents, datasets, videos, audio, and images; custom collections and multiple collection tags per file; file type and filename filters.
 - **Reader**: read extracted PDF pages, DOCX paragraphs, or text sections, jump to source citations, save color highlights and notes, resume the last section, and listen using available local system voices. Open the original PDF beside the extracted text for layout context. Highlights belong to the extracted text, not the PDF's native annotation layer. Listen reads the current section; choose a voice and speed before starting.
 
 When you import a second textbook, Codex reads the existing catalog and integrates overlapping content, preserving each document's evidence. The application checks that quotes match the parsed source. It does not generate sample concepts or fabricate an atlas.
@@ -67,6 +75,21 @@ When you import a second textbook, Codex reads the existing catalog and integrat
 The server listens only on loopback; it is accessible to processes and users on the same computer, and has no separate login. It does not sync across devices. Python parsing happens locally; the AI analysis handled by Codex may send source excerpts to ChatGPT subject to your account's data settings. Only import materials you are permitted to process.
 
 Text-bearing PDFs are supported; scanned or image-only PDFs need OCR first. DOCX paragraphs and tables are parsed, not embedded images. Source references use PDF pages, DOCX paragraph/table numbers, and text line ranges. Complex tables, equations and multi-column PDFs may require manual review.
+
+## Supported materials
+
+| Format | Reader | Codex indexing |
+|---|---|---|
+| PDF, DOCX, Markdown, TXT | Extracted text, highlights, notes, local speech | Yes |
+| CSV, JSON, HTML | Readable, parsed sections | Yes |
+| SRT, VTT | Subtitle text and timestamped sections | Yes |
+| MP4, WebM, MOV, M4V | Browser video player, saved playback position | Attach a transcript |
+| MP3, WAV, M4A, OGG, FLAC, AAC | Browser audio player, saved playback position | Attach a transcript |
+| PNG, JPEG, WebP, GIF | Image viewer | OCR not included |
+
+Media playback depends on browser codec support. For video/audio, attach an existing SRT, VTT, TXT or Markdown transcript in the reader. Timestamped transcript sections link back to playback positions. Transcript indexing is incremental and never rewrites previous source references. Automatic speech-to-text, OCR, streamed website videos and DRM-protected video are not supported. Browser imports support text files up to 100 MB and media files up to 1 GB; use the inbox for larger local media. Processing media does not require an API key.
+
+Default collections are Career, Product Data Science, Textbook Knowledge, and Fun Knowledge. Create your own and assign more than one collection to a material. Existing materials initially remain Unsorted until you classify them; collections are independent from AI-generated domains and do not change knowledge nodes or existing source evidence.
 
 Indexing is initiated by you through Codex, not a continuously running autonomous service. Large books may require several sessions due to model context or account limits; pending sections can be resumed. Deduplication and connections depend on the quality of Codex's analysis. Graph visualization can become crowded with very large collections; use the domain and focus filters. The local server itself makes no external network calls.
 
