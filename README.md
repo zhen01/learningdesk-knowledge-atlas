@@ -12,11 +12,18 @@ Your personal, local academic knowledge base. No website hosting, API key or sep
 6. Open a second Terminal in this folder and run `bash "Index with Codex.command"` or open Codex CLI and ask: **Index all pending learning materials according to AGENTS.md.** Sign in with ChatGPT (not an API key). Review any file write approvals Codex requests.
 7. Refresh LearningDesk when indexing finishes.
 
-## Three views
+## Update an existing installation (preserve your atlas)
+
+Stop the local server with Ctrl+C. Back up the entire existing LearningDesk2 folder first, then update the source files in that same folder. If this is a Git clone, run `git pull` from the folder. If you downloaded a ZIP, copy the new code over the old code without replacing `data/` or `inbox/`. Never unzip into a new folder and expect the old database to follow automatically.
+
+The app automatically creates a SQLite backup before the reader schema upgrade and once per day before indexing. You can also run `.venv/bin/python atlas.py backup`. All updates are incremental: previously processed sections are skipped, existing concept definitions and source references remain, and duplicate uploads reuse the existing document hash.
+
+## Four views
 
 - **Knowledge Tree**: domains, modules, submodules, concepts. Expand/collapse, search ideas, and click a concept to view its references.
-- **Connections**: zoomable, pannable graph. Click nodes for explanations or edges for the relationship and supporting evidence.
-- **Library**: original documents, local import status, source downloads.
+- **Connections**: spaced, grouped domain layout with zoom and pan, domain filters, cross-domain relationships, and a focused one-hop neighborhood mode. Click a card or a relationship line.
+- **Library**: original documents, local import status, source downloads, and access to the reader.
+- **Reader**: read extracted PDF pages, DOCX paragraphs, or text sections, jump to source citations, save color highlights and notes, resume the last section, and listen using available local system voices. Open the original PDF beside the extracted text for layout context. Highlights belong to the extracted text, not the PDF's native annotation layer. Listen reads the current section; choose a voice and speed before starting.
 
 When you import a second textbook, Codex reads the existing catalog and integrates overlapping content, preserving each document's evidence. The application checks that quotes match the parsed source. It does not generate sample concepts or fabricate an atlas.
 
