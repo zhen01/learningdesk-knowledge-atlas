@@ -16,6 +16,7 @@ CODE = (
     "study.py", "web/study.js", "web/study.css",
     "practice.py", "web/practice.js", "web/practice.css",
     "web/gallery.js", "web/gallery.css",
+    "later.py", "web/later.js", "web/later.css",
 )
 
 def update(destination, source=SOURCE):
