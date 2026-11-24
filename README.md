@@ -94,6 +94,17 @@ Default collections are Career, Product Data Science, Textbook Knowledge, and Fu
 
 ## Study workspace
 
+### Practice & Roadmaps
+
+- **Learning Roadmap:** four role-oriented starter tracks (Data Engineering, Product Data Science, Analytics Engineering, SDE—Data), ordered topics, linked existing atlas concepts, and persistent completion.
+- **Material Roadmap:** open a document's chapter checklist from Library or Reader. Detected headings form sections; otherwise use source-ordered ranges of up to eight source sections. Indexed concepts supply descriptive labels. Check off groups or individual sections without changing the original document or AI index.
+- **Study Plan:** schedule topics by goal, start date, days and daily time budget, with review and practice days. Topic completion persists; this is a suggested plan, not a calendar reminder service.
+- **Coding Lab:** six starter SQL/Python exercises, sample SQL tables, hints, solutions, real SQLite SELECT query execution against two fixtures, and bounded Python exercise interpretation with tests. Python supports a limited beginner subset (no imports, arbitrary system access or full Python runtime); more exercises and language features can be added later.
+- **Concept Lab:** interactive join cardinality and A/B testing examples.
+- **Mistake Notebook:** failed attempts, feedback, reference solution, personal reflection and resolved status.
+
+All practice state is local and included in portable library exports.
+
 - Rename materials using their display names; original filenames, source IDs and AI evidence remain unchanged.
 - Save per-material notes, estimated reading/playback progress and manual completion. Completion is explicit; position is not a measure of comprehension.
 - DOCX opens as continuous extracted text by default. Switch between continuous and section view. Select within a source section to highlight.
