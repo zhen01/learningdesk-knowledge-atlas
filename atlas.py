@@ -12,6 +12,7 @@ import unicodedata
 import webbrowser
 import study
 import practice
+import threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
@@ -23,6 +24,7 @@ INBOX = ROOT / "inbox"
 VIDEO={".mp4",".m4v",".mov",".webm"}
 AUDIO={".mp3",".m4a",".wav",".ogg",".flac",".aac"}
 IMAGES={".png",".jpg",".jpeg",".webp",".gif"}
+_cover_slots=threading.BoundedSemaphore(2)
 MEDIA=VIDEO|AUDIO|IMAGES
 EXT = {".pdf", ".docx", ".pptx", ".md", ".markdown", ".txt", ".csv", ".json", ".html", ".htm", ".srt", ".vtt"}|MEDIA
 DEFAULT_COLLECTIONS=("Career","Product Data Science","Textbook Knowledge","Fun Knowledge")
@@ -86,6 +88,43 @@ def reader_document(doc):
                 "transcripts":rows(c,"SELECT filename,hash FROM transcripts WHERE document=?",(doc,)),
                 "media_position":media_position[0] if media_position else 0,
                 "study":dict(record) if (record:=c.execute("SELECT * FROM study_materials WHERE document=?",(doc,)).fetchone()) else {}}
+
+def material_cover(doc):
+    """Optional macOS Quick Look preview, cached separately from source data."""
+    if not isinstance(doc,str) or not re.fullmatch(r"[0-9a-f]{64}",doc):
+        return None
+    with db() as c:
+        record=c.execute("SELECT original FROM documents WHERE id=?",(doc,)).fetchone()
+    if not record:return None
+    original=(DATA/record["original"]).resolve()
+    if (DATA/"originals").resolve() not in original.parents or not original.is_file():
+        return None
+    if original.suffix.lower() not in ({".pdf",".docx",".pptx"}|VIDEO|IMAGES):return None
+    if original.suffix.lower() in IMAGES:return original
+    if sys.platform!="darwin" or not Path("/usr/bin/qlmanage").is_file():return None
+    folder=DATA/"covers";folder.mkdir(exist_ok=True)
+    cover=folder/(doc+".png");failed=folder/(doc+".unavailable")
+    if cover.is_file():return cover
+    if failed.exists():return None
+    if not _cover_slots.acquire(timeout=1):return None
+    try:
+        if cover.is_file():return cover
+        if failed.exists():return None
+        import tempfile,subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            result=subprocess.run(["/usr/bin/qlmanage","-t","-s","640","-o",tmp,str(original)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=15)
+            previews=list(Path(tmp).glob("*.png"))
+            if result.returncode==0 and previews:
+                staging=folder/(doc+"."+Path(tmp).name+".png")
+                shutil.copyfile(previews[0],staging)
+                staging.replace(cover)
+                return cover
+        failed.touch()
+    except (OSError,subprocess.TimeoutExpired):
+        return None
+    finally:
+        _cover_slots.release()
+    return None
 
 def collection_change(payload):
     with db() as c:
@@ -433,6 +472,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(reader_document(parse_qs(u.query).get("id",[""])[0]))
             except ValueError as exc:
                 return self.send({"error":str(exc)},status=404)
+        if u.path=="/api/cover":
+            cover=material_cover(parse_qs(u.query).get("id",[""])[0])
+            if cover is None:return self.send({"error":"Cover unavailable"},status=404)
+            return self.send_file(cover,mimetypes.guess_type(cover.name)[0] or "image/png","inline")
         if u.path=="/api/original":
             with db() as c:
                 d=c.execute("SELECT * FROM documents WHERE id=?",(parse_qs(u.query).get("id",[""])[0],)).fetchone()
@@ -442,7 +485,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.suffix.lower() in {".md",".markdown",".txt",".html",".htm"}: typ="text/plain; charset=utf-8"
             disposition="inline" if p.suffix.lower() in ({".pdf"}|MEDIA) else "attachment"
             return self.send_file(p,typ,disposition)
-        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css"):
+        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css"):
             name="index.html" if u.path=="/" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
