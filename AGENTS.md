@@ -44,6 +44,7 @@ Example roadmap shape (illustrative labels only):
 - Documents are immutable once imported. If the same filename has changed content, it is a new document version; preserve both source IDs and annotations. A database backup is not a backup of the originals; retain and periodically copy the entire data folder.
 - User-defined library collections are separate from the AI hierarchy. Never reclassify a user's collection assignments without their explicit instruction. For video and audio, only index an attached readable transcript or subtitles, not the filename. Do not claim to have watched or transcribed a video if only the transcript is available.
 - Preserve study plans, roadmap completion, chapter checklists, coding attempts and mistake notes. They are user-maintained state, distinct from the AI indexing process.
+- The Reading List and Materials to be added queue store learning intentions. Read them with `.venv/bin/python atlas.py later` when the user asks what to study or research next. Do not automatically research, generate, mark added, or index a bookmark simply because it is saved. Research and produce material only when requested, then preserve the queue item and link the imported material.
 
 ```json
 {
