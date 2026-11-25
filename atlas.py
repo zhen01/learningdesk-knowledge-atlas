@@ -10,6 +10,7 @@ import sqlite3
 import sys
 import unicodedata
 import webbrowser
+import shape
 import study
 import practice
 import later
@@ -69,6 +70,7 @@ def db():
     study.schema(conn)
     practice.schema(conn)
     later.schema(conn)
+    shape.schema(conn)
     return conn
 
 def backup_db(conn, reason="manual"):
@@ -464,6 +466,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.valid_host():
             return self.send({"error":"Local access only"},status=403)
         u=urlparse(self.path)
+        if u.path=="/api/shape":
+            with db() as c:return self.send(shape.state(c))
         if u.path=="/api/atlas":
             return self.send(snapshot())
         if u.path=="/api/later":
@@ -472,7 +476,26 @@ class Handler(BaseHTTPRequestHandler):
             with db() as c:return self.send(practice.state(c))
         if u.path=="/api/chapters":
             doc=parse_qs(u.query).get("id",[""])[0]
-            with db() as c:return self.send(practice.chapter_roadmap(c,doc))
+            with db() as c:
+                result=practice.chapter_roadmap(c,doc)
+                record=c.execute("SELECT original FROM documents WHERE id=?",(doc,)).fetchone()
+            result["bookmarks"]=[]
+            if record and Path(record[0]).suffix.lower()==".pdf":
+                from pypdf import PdfReader
+                try:
+                    reader=PdfReader(DATA/record[0])
+                    def collect(entries):
+                        for entry in entries:
+                            if isinstance(entry,list):
+                                collect(entry)
+                            else:
+                                page=reader.get_destination_page_number(entry)
+                                if page is not None and page>=0:
+                                    result["bookmarks"].append({"title":entry.title,"label":f"Page {page+1}"})
+                    collect(reader.outline)
+                except Exception:
+                    pass  # Keep extracted headings available for malformed outlines.
+            return self.send(result)
         if u.path=="/api/reader":
             try:
                 return self.send(reader_document(parse_qs(u.query).get("id",[""])[0]))
@@ -491,13 +514,13 @@ class Handler(BaseHTTPRequestHandler):
             if p.suffix.lower() in {".md",".markdown",".txt",".html",".htm"}: typ="text/plain; charset=utf-8"
             disposition="inline" if p.suffix.lower() in ({".pdf"}|MEDIA) else "attachment"
             return self.send_file(p,typ,disposition)
-        if u.path in ("/","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css","/later.js","/later.css","/macos.css"):
-            name="index.html" if u.path=="/" else u.path[1:]
+        if u.path in ("/","/workspace","/shape.js","/shape.css","/app.js","/style.css","/reader.js","/graph.js","/upgrade.css","/library.js","/study.js","/study.css","/practice.js","/practice.css","/gallery.js","/gallery.css","/later.js","/later.css","/macos.css"):
+            name="shape.html" if u.path=="/" else "index.html" if u.path=="/workspace" else u.path[1:]
             return self.send((ROOT/"web"/name).read_bytes(),mimetypes.guess_type(name)[0]+"; charset=utf-8")
         self.send({"error":"Not found"},status=404)
     def do_POST(self):
         action=urlparse(self.path).path
-        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position","/api/study","/api/flashcards","/api/practice","/api/later"):
+        if not self.valid_host() or self.headers.get("Origin")!=f"http://127.0.0.1:{self.server.server_port}" or action not in ("/api/shape","/api/import","/api/highlight","/api/position","/api/collection","/api/transcript","/api/media-position","/api/study","/api/flashcards","/api/practice","/api/later"):
             return self.send({"error":"Request rejected"},status=403)
         try:
             length=int(self.headers.get("Content-Length","0"))
@@ -505,6 +528,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not 0<length<=(25_000_000 if action=="/api/transcript" else 12000000 if action=="/api/flashcards" else 1000000):
                     raise ValueError("Invalid request size.")
                 payload=json.loads(self.rfile.read(length))
+                if action=="/api/shape":
+                    with db() as c:return self.send(shape.change(c,payload))
                 if action=="/api/later":
                     with db() as c:return self.send(later.action(c,payload))
                 if action=="/api/practice":
@@ -557,6 +582,8 @@ def main():
     sub.add_parser("pending");sub.add_parser("catalog");sub.add_parser("backup")
     sub.add_parser("roadmap-pending")
     sub.add_parser("later")
+    sub.add_parser("goals")
+    curricula=sub.add_parser("curriculum-apply");curricula.add_argument("file")
     roadmap_context=sub.add_parser("roadmap-context");roadmap_context.add_argument("document")
     roadmap_apply=sub.add_parser("roadmap-apply");roadmap_apply.add_argument("file")
     export=sub.add_parser("export-library");export.add_argument("destination")
@@ -574,6 +601,10 @@ def main():
         INBOX.mkdir(exist_ok=True)
         for p in [Path(x) for x in args.paths] or sorted(INBOX.iterdir()):
             if p.is_file() and p.suffix.lower() in EXT: print(f"{ingest(p)}  {p.name}")
+    elif args.cmd=="goals":
+        with db() as c:print(json.dumps(shape.state(c),ensure_ascii=False))
+    elif args.cmd=="curriculum-apply":
+        with db() as c:shape.apply_lessons(c,json.loads(Path(args.file).read_text()))
     elif args.cmd=="pending":
         print(json.dumps(pending(),ensure_ascii=False,indent=2))
     elif args.cmd=="catalog":
