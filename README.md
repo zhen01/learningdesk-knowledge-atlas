@@ -1,4 +1,8 @@
-# LearningDesk 2.0 — Knowledge Atlas
+# LearningDesk Atlas 2.0
+
+Open Start LearningDesk.command for Knowledge Shape. Add a domain, choose its target, and record self-assessed evidence. L4 and L5 count as specializations. Use Index with Codex.command for source-linked curricula.
+
+To upgrade, unzip this release separately and run `python3 update_existing.py "/path/to/existing/LearningDesk"` from the new folder. Launch from the original folder to retain your library. Back up the entire data folder, including originals.
 
 **Information is easy to access. Understanding takes a little more work.**
 

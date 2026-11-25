@@ -78,3 +78,7 @@ Example roadmap shape (illustrative labels only):
 ```
 
 Apply using `.venv/bin/python atlas.py apply /path/to/batch.json`. Do not save fabricated examples as real content.
+
+## Domain curricula
+
+When asked to generate curricula, run atlas.py goals and catalog. For each domain with relevant indexed material and no saved lessons, read its source sections. Design progressively harder tasks for recognition, explanation, application, evaluation and creation. Include a realistic case and distinguish sourced observations from any invented inputs. Save JSON with domain and lessons. Each of five lessons has level (1–5), task, document, label and quote (a contiguous source excerpt). Run atlas.py curriculum-apply FILE. Skip domains lacking readable sources and report gaps. Preserve existing curricula unless revision was requested.
